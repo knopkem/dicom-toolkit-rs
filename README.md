@@ -19,7 +19,7 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 | 1 — Foundation | `dicom-toolkit-core`, `dicom-toolkit-dict` | 43 + 38 |
 | 2 — Data model & I/O | `dicom-toolkit-data` | 153 |
 | 3 — Networking | `dicom-toolkit-net` | 59 |
-| 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec`, `hayro-jpeg2000` | 44 + 89 + 46 |
+| 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec`, `dicom-toolkit-jpeg2000` | 44 + 89 + 46 |
 | Tools | `dicom-toolkit-tools` | 9 integration |
 | **Total** | | **481 unit/integration + 6 doctests = 487 passing, 0 failed** |
 
@@ -36,7 +36,7 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 | [`dicom-toolkit-image`](crates/dicom-toolkit-image) | `dcmimgle`, `dcmimage` | Pixel pipeline, Modality/VOI LUT, window/level, overlays, color models, PNG export |
 | [`dicom-toolkit-codec`](crates/dicom-toolkit-codec) | `dcmjpeg`, `dcmjpls`, `dcmrle`, `dcmjp2k` | JPEG baseline, **pure-Rust JPEG-LS**, **pure-Rust JPEG 2000** (lossless & lossy), RLE PackBits, codec registry |
 | [`dicom-toolkit-tools`](crates/dicom-toolkit-tools) | `dcmdump`, `echoscu`, etc. | CLI utilities: dump, network SCU/SCP, img2dcm, JPEG-LS/JPEG 2000 compress/decompress (see below) |
-| [`hayro-jpeg2000`](crates/hayro-jpeg2000) | internal fork | Pure-Rust JPEG 2000 engine used by `dicom-toolkit-codec`; native-bit-depth decode plus DICOM-focused encoder |
+| [`dicom-toolkit-jpeg2000`](crates/dicom-toolkit-jpeg2000) | internal/published fork | Pure-Rust JPEG 2000 engine used by `dicom-toolkit-codec`; published fork with native-bit-depth decode plus DICOM-focused encoder |
 
 ---
 
@@ -61,6 +61,26 @@ cargo build --bins
 # Run all tests
 cargo test --workspace
 ```
+
+---
+
+## Publishing crates
+
+For crates.io releases, use the helper script from the repository root:
+
+```bash
+# Show the publish order and versions
+bash scripts/publish-crates.sh --plan
+
+# Publish all crates in dependency order
+bash scripts/publish-crates.sh
+
+# Resume after a partial publish
+bash scripts/publish-crates.sh --from dicom-toolkit-net
+```
+
+There is also a manual GitHub Actions workflow named `Publish crates` which runs the
+same release order with a repository `CARGO_REGISTRY_TOKEN` secret.
 
 ---
 
@@ -558,7 +578,7 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 
 ## JPEG 2000 Codec
 
-`dicom-toolkit-codec` now includes **pure-Rust JPEG 2000** support backed by the in-workspace `hayro-jpeg2000` fork. No C/C++ bindings are used.
+`dicom-toolkit-codec` now includes **pure-Rust JPEG 2000** support backed by the in-workspace `dicom-toolkit-jpeg2000` fork. No C/C++ bindings are used.
 
 **Supported features:**
 - DICOM transfer syntaxes `1.2.840.10008.1.2.4.90` (lossless) and `1.2.840.10008.1.2.4.91`

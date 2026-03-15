@@ -1,4 +1,4 @@
-//! JPEG 2000 decoder — wraps the forked `hayro-jpeg2000` for DICOM use.
+//! JPEG 2000 decoder — wraps the forked `dicom-toolkit-jpeg2000` crate for DICOM use.
 //!
 //! Decodes raw J2K codestreams (as embedded in DICOM encapsulated pixel data)
 //! at native bit depth, preserving the full dynamic range of 12-bit and 16-bit
@@ -29,7 +29,7 @@ pub struct DecodedFrame {
 /// JP2 container format (starting with `00 00 00 0C 6A 50 20 20`) is also
 /// accepted.
 pub fn decode_jp2k(data: &[u8]) -> DcmResult<DecodedFrame> {
-    use hayro_jpeg2000::{DecodeSettings, Image};
+    use dicom_toolkit_jpeg2000::{DecodeSettings, Image};
 
     if data.is_empty() {
         return Err(DcmError::DecompressionError {

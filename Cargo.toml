@@ -8,11 +8,11 @@ members = [
     "crates/dicom-toolkit-image",
     "crates/dicom-toolkit-codec",
     "crates/dicom-toolkit-tools",
-    "crates/hayro-jpeg2000",
+    "crates/dicom-toolkit-jpeg2000",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT OR Apache-2.0"
@@ -23,15 +23,15 @@ categories = ["science", "parser-implementations", "encoding"]
 
 [workspace.dependencies]
 # Internal crates
-dicom-toolkit-core = { path = "crates/dicom-toolkit-core", version = "0.1.0" }
-dicom-toolkit-dict = { path = "crates/dicom-toolkit-dict", version = "0.1.0" }
-dicom-toolkit-data = { path = "crates/dicom-toolkit-data", version = "0.1.0" }
-dicom-toolkit-net = { path = "crates/dicom-toolkit-net", version = "0.1.0" }
-dicom-toolkit-image = { path = "crates/dicom-toolkit-image", version = "0.1.0" }
-dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec", version = "0.1.0" }
+dicom-toolkit-core = { path = "crates/dicom-toolkit-core", version = "0.2.0" }
+dicom-toolkit-dict = { path = "crates/dicom-toolkit-dict", version = "0.2.0" }
+dicom-toolkit-data = { path = "crates/dicom-toolkit-data", version = "0.2.0" }
+dicom-toolkit-net = { path = "crates/dicom-toolkit-net", version = "0.2.0" }
+dicom-toolkit-image = { path = "crates/dicom-toolkit-image", version = "0.2.0" }
+dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec", version = "0.2.0" }
 
-# JPEG 2000 (forked for DICOM 16-bit support)
-hayro-jpeg2000 = { path = "crates/hayro-jpeg2000", default-features = false, features = ["std", "simd"] }
+# JPEG 2000 (published fork for DICOM-native decode/encode support)
+dicom-toolkit-jpeg2000 = { path = "crates/dicom-toolkit-jpeg2000", version = "0.4.0", default-features = false, features = ["std", "simd"] }
 
 # Error handling
 thiserror = "2"

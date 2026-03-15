@@ -1,10 +1,10 @@
-//! JPEG 2000 encoder — wraps the forked `hayro-jpeg2000` encoder for DICOM use.
+//! JPEG 2000 encoder — wraps the forked `dicom-toolkit-jpeg2000` encoder for DICOM use.
 //!
 //! Encodes raw pixel data into JPEG 2000 codestreams suitable for embedding
 //! in DICOM encapsulated pixel data.
 
 use dicom_toolkit_core::error::{DcmError, DcmResult};
-use hayro_jpeg2000::{encode as j2k_encode, EncodeOptions};
+use dicom_toolkit_jpeg2000::{encode as j2k_encode, EncodeOptions};
 
 /// Encode raw pixel data into a JPEG 2000 codestream.
 ///

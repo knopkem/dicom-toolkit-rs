@@ -1,21 +1,26 @@
 /*!
-A memory-safe, pure-Rust JPEG 2000 decoder.
+A memory-safe, pure-Rust JPEG 2000 codec.
 
-`hayro-jpeg2000` can decode both raw JPEG 2000 codestreams (`.j2c`) and images wrapped
+`dicom-toolkit-jpeg2000` is the JPEG 2000 engine used by `dicom-toolkit-rs`.
+It is a maintained fork of the original `hayro-jpeg2000` project with
+DICOM-focused extensions, including native-bit-depth decode for 8/12/16-bit
+images and pure-Rust JPEG 2000 encoding.
+
+The crate can decode both raw JPEG 2000 codestreams (`.j2c`) and images wrapped
 inside the JP2 container format. The decoder supports the vast majority of features
-defined in the JPEG2000 core coding system (ISO/IEC 15444-1) as well as some color
+defined in the JPEG 2000 core coding system (ISO/IEC 15444-1) as well as some color
 spaces from the extensions (ISO/IEC 15444-2). There are still some missing pieces
-for some "obscure" features(like for example support for progression order
-changes in tile-parts), but all features that actually commonly appear in real-life
-images should be supported (if not, please open an issue!).
+for some "obscure" features (for example support for progression order
+changes in tile-parts), but the features that commonly appear in real-world
+images are supported.
 
-The decoder abstracts away most of the internal complexity of JPEG2000
-and yields a simple 8-bit image with either greyscale, RGB, CMYK or an ICC-based
-color space, which can then be processed further according to your needs.
+The crate offers both a high-level 8-bit decode path for general image use and
+a native-bit-depth decode path for integrations such as DICOM, plus encoder APIs
+for emitting raw JPEG 2000 codestreams.
 
 # Example
 ```rust,no_run
-use hayro_jpeg2000::{Image, DecodeSettings};
+use dicom_toolkit_jpeg2000::{DecodeSettings, Image};
 
 let data = std::fs::read("image.jp2").unwrap();
 let image = Image::new(&data, &DecodeSettings::default()).unwrap();
@@ -32,8 +37,8 @@ let bitmap = image.decode().unwrap();
 ```
 
 If you want to see a more comprehensive example, please take a look
-at the example in [GitHub](https://github.com/LaurenzV/hayro/blob/main/hayro-jpeg2000/examples/png.rs),
-which shows you the main steps needed to convert a JPEG2000 image into PNG for example.
+at the example in [GitHub](https://github.com/knopkem/dicom-toolkit-rs/blob/main/crates/dicom-toolkit-jpeg2000/examples/png.rs),
+which shows the main steps needed to convert a JPEG 2000 image into PNG.
 
 # Testing
 The decoder has been tested against 20.000+ images scraped from random PDFs
@@ -280,7 +285,7 @@ impl<'a> Image<'a> {
     ///
     /// This method does the same as [`Image::decode`], but you can provide
     /// a custom buffer for the output, as well as a decoder context. Doing
-    /// so will allow `hayro-jpeg2000` to reuse memory allocations, so this is
+    /// so will allow `dicom-toolkit-jpeg2000` to reuse memory allocations, so this is
     /// especially recommended if you plan on converting multiple images
     /// in the same session.
     ///
@@ -443,7 +448,7 @@ pub struct Bitmap {
     pub color_space: ColorSpace,
     /// The raw pixel data of the image. The result will always be in
     /// 8-bit (in case the original image had a different bit-depth,
-    /// hayro-jpeg2000 always scales to 8-bit).
+    /// dicom-toolkit-jpeg2000 always scales to 8-bit).
     ///
     /// The size is guaranteed to equal
     /// `width * height * (num_channels + (if has_alpha { 1 } else { 0 })`.

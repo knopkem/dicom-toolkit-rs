@@ -289,13 +289,13 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-codec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dicom-toolkit-core",
  "dicom-toolkit-data",
  "dicom-toolkit-dict",
+ "dicom-toolkit-jpeg2000",
  "flate2",
- "hayro-jpeg2000",
  "inventory",
  "jpeg-decoder",
  "jpeg-encoder",
@@ -306,7 +306,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crc32fast",
  "encoding_rs",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-data"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "bytes",
@@ -338,7 +338,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-dict"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dicom-toolkit-core",
  "proptest",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-image"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dicom-toolkit-core",
  "dicom-toolkit-data",
@@ -359,8 +359,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dicom-toolkit-jpeg2000"
+version = "0.4.0"
+dependencies = [
+ "fearless_simd",
+ "log",
+]
+
+[[package]]
 name = "dicom-toolkit-net"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "dicom-toolkit-core",
@@ -378,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "dicom-toolkit-codec",
@@ -601,14 +609,6 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
-
-[[package]]
-name = "hayro-jpeg2000"
-version = "0.3.4"
-dependencies = [
- "fearless_simd",
- "log",
-]
 
 [[package]]
 name = "heck"

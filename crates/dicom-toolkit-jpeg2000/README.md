@@ -1,45 +1,46 @@
-# hayro-jpeg2000
+# dicom-toolkit-jpeg2000
 
-[![Crates.io](https://img.shields.io/crates/v/hayro-jpeg2000.svg)](https://crates.io/crates/hayro-jpeg2000)
-[![Documentation](https://docs.rs/hayro-jpeg2000/badge.svg)](https://docs.rs/hayro-jpeg2000)
+[![Crates.io](https://img.shields.io/crates/v/dicom-toolkit-jpeg2000.svg)](https://crates.io/crates/dicom-toolkit-jpeg2000)
+[![Documentation](https://docs.rs/dicom-toolkit-jpeg2000/badge.svg)](https://docs.rs/dicom-toolkit-jpeg2000)
 
 <!-- cargo-rdme start -->
 
-A memory-safe, pure-Rust JPEG 2000 decoder.
+A memory-safe, pure-Rust JPEG 2000 codec.
 
-`hayro-jpeg2000` can decode both raw JPEG 2000 codestreams (`.j2c`) and images wrapped
+`dicom-toolkit-jpeg2000` is the JPEG 2000 engine used by `dicom-toolkit-rs`.
+It is a maintained fork of the original `hayro-jpeg2000` project with
+DICOM-focused extensions, including native-bit-depth decode for 8/12/16-bit
+images and pure-Rust JPEG 2000 encoding.
+
+The crate can decode both raw JPEG 2000 codestreams (`.j2c`) and images wrapped
 inside the JP2 container format. The decoder supports the vast majority of features
-defined in the JPEG2000 core coding system (ISO/IEC 15444-1) as well as some color
+defined in the JPEG 2000 core coding system (ISO/IEC 15444-1) as well as some color
 spaces from the extensions (ISO/IEC 15444-2). There are still some missing pieces
-for some "obscure" features(like for example support for progression order
-changes in tile-parts), but all features that actually commonly appear in real-life
-images should be supported (if not, please open an issue!).
-
-The decoder abstracts away most of the internal complexity of JPEG2000
-and yields a simple 8-bit image with either greyscale, RGB, CMYK or an ICC-based
-color space, which can then be processed further according to your needs.
+for some "obscure" features (for example support for progression order
+changes in tile-parts), but the features that commonly appear in real-world
+images are supported.
 
 ## Example
 ```rust
-use hayro_jpeg2000::{Image, DecodeSettings};
+use dicom_toolkit_jpeg2000::{DecodeSettings, Image};
 
 let data = std::fs::read("image.jp2").unwrap();
 let image = Image::new(&data, &DecodeSettings::default()).unwrap();
 
 println!(
     "{}x{} image in {:?} with alpha={}",
-    image.width,
-    image.height,
-    image.color_space,
-    image.has_alpha,
+    image.width(),
+    image.height(),
+    image.color_space(),
+    image.has_alpha(),
 );
 
 let bitmap = image.decode().unwrap();
 ```
 
 If you want to see a more comprehensive example, please take a look
-at the example in [GitHub](https://github.com/LaurenzV/hayro/blob/main/hayro-jpeg2000/examples/png.rs),
-which shows you the main steps needed to convert a JPEG2000 image into PNG for example.
+at the example in [GitHub](https://github.com/knopkem/dicom-toolkit-rs/blob/main/crates/dicom-toolkit-jpeg2000/examples/png.rs),
+which shows the main steps needed to convert a JPEG 2000 image into PNG.
 
 ## Testing
 The decoder has been tested against 20.000+ images scraped from random PDFs

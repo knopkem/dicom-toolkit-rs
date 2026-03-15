@@ -1,6 +1,6 @@
 //! JPEG 2000 codec integration for DICOM transfer syntaxes.
 //!
-//! Uses a forked `hayro-jpeg2000` for both encoding and decoding at native
+//! Uses the forked `dicom-toolkit-jpeg2000` crate for both encoding and decoding at native
 //! bit depth (8/12/16-bit), preserving full diagnostic quality.
 
 pub mod decoder;
