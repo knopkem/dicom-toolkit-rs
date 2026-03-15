@@ -1,4 +1,4 @@
-# 02_network.ps1 — storescu / storescp / echoscu showcase
+# 02_network.ps1  -  storescu / storescp / echoscu showcase
 #
 # Starts a Storage SCP on localhost:11112, sends all 5 ABDOM slices,
 # then verifies the received files.
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
-$Ext       = if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Dcmdump   = Join-Path $Root "target\debug\dcmdump$Ext"
 $Echoscu   = Join-Path $Root "target\debug\echoscu$Ext"
 $Storescu  = Join-Path $Root "target\debug\storescu$Ext"
@@ -36,7 +36,7 @@ function Banner($text) {
 
 try {
     # ── Step 1: start Storage SCP ───────────────────────────────────
-    Banner "Step 1 — Start Storage SCP on :$Port"
+    Banner "Step 1  -  Start Storage SCP on :$Port"
 
     # Redirect SCP output to log files so it doesn't interleave with our output.
     $LogOut = Join-Path $RecvDir 'scp.out'
@@ -54,16 +54,16 @@ try {
     }
 
     # ── Step 2: C-ECHO verification ──────────────────────────────────
-    Banner "Step 2 — C-ECHO verification"
+    Banner "Step 2  -  C-ECHO verification"
     & $Echoscu -v -a DEMO_SCU -c STORESCP localhost $Port
 
     # ── Step 3: send files ───────────────────────────────────────────
-    Banner "Step 3 — Send 5 CT slices with storescu"
+    Banner "Step 3  -  Send 5 CT slices with storescu"
     $DicomFiles = (Get-ChildItem (Join-Path $Files 'ABDOM_*.dcm') | Sort-Object Name).FullName
     & $Storescu -v -a DEMO_SCU -c STORESCP localhost $Port @DicomFiles
 
     # ── Step 4: verify received files ───────────────────────────────
-    Banner "Step 4 — Verify received files"
+    Banner "Step 4  -  Verify received files"
     $Received = Get-ChildItem (Join-Path $RecvDir '*.dcm') | Sort-Object Name
     Write-Host "Received $($Received.Count) file(s):"
     foreach ($f in $Received) {
@@ -75,7 +75,7 @@ try {
     }
 
     $Total = (Get-ChildItem (Join-Path $Files 'ABDOM_*.dcm')).Count
-    Banner "Done — $($Received.Count)/$Total files transferred successfully"
+    Banner "Done  -  $($Received.Count)/$Total files transferred successfully"
 
 } finally {
     if ($null -ne $ScpProc -and -not $ScpProc.HasExited) {

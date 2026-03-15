@@ -1,4 +1,4 @@
-# demo.ps1 — full dicom-toolkit-rs CLI demonstration
+# demo.ps1  -  full dicom-toolkit-rs CLI demonstration
 #
 # Runs all showcase scripts in order against the ABDOM CT test series.
 # Builds the workspace first if the binaries are not present.
@@ -18,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
-$Ext       = if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Dcmdump   = Join-Path $Root "target\debug\dcmdump$Ext"
 
 function Banner($text) {
@@ -44,27 +44,27 @@ if (-not (Test-Path $Dcmdump)) {
 }
 
 # ── 01: dcmdump ──────────────────────────────────────────────────────────────
-Banner "01 · dcmdump — print DICOM file contents"
+Banner "01 · dcmdump  -  print DICOM file contents"
 & "$ScriptDir\01_dump.ps1"
 MaybePause
 
 # ── 02: network ──────────────────────────────────────────────────────────────
-Banner "02 · echoscu + storescu + storescp — network transfer"
+Banner "02 · echoscu + storescu + storescp  -  network transfer"
 & "$ScriptDir\02_network.ps1"
 MaybePause
 
 # ── 03: query ────────────────────────────────────────────────────────────────
-Banner "03 · findscu — C-FIND query examples"
+Banner "03 · findscu  -  C-FIND query examples"
 & "$ScriptDir\03_query.ps1"
 MaybePause
 
 # ── 04: img2dcm ──────────────────────────────────────────────────────────────
-Banner "04 · img2dcm — PNG to DICOM Secondary Capture"
+Banner "04 · img2dcm  -  PNG to DICOM Secondary Capture"
 & "$ScriptDir\04_img2dcm.ps1"
 MaybePause
 
 # ── 05: jpegls ───────────────────────────────────────────────────────────────
-Banner "05 · dcmcjpls + dcmdjpls — JPEG-LS compress / decompress"
+Banner "05 · dcmcjpls + dcmdjpls  -  JPEG-LS compress / decompress"
 & "$ScriptDir\05_jpegls.ps1"
 
 Write-Host ""

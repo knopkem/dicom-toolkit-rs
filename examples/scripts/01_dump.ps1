@@ -1,4 +1,4 @@
-# 01_dump.ps1 — dcmdump showcase
+# 01_dump.ps1  -  dcmdump showcase
 # Demonstrates the various output modes of dcmdump using the ABDOM CT series.
 #
 # Usage: pwsh -File 01_dump.ps1
@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
-$Ext       = if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Bin       = Join-Path $Root "target\debug\dcmdump$Ext"
 $Files     = Join-Path $ScriptDir '..\testfiles'
 
@@ -41,7 +41,7 @@ Banner "4. DICOM JSON output  (--json)"
 Banner "5. DICOM XML output  (--xml)"
 & $Bin --xml $DCM | Select-Object -First 40
 
-Banner "6. Dump all 5 slices — key tags only"
+Banner "6. Dump all 5 slices  -  key tags only"
 Get-ChildItem (Join-Path $Files 'ABDOM_*.dcm') | Sort-Object Name | ForEach-Object {
     Write-Host ""
     Write-Host "--- $($_.Name) ---" -ForegroundColor Yellow

@@ -1,4 +1,4 @@
-# 05_jpegls.ps1 — JPEG-LS compression / decompression showcase
+# 05_jpegls.ps1  -  JPEG-LS compression / decompression showcase
 #
 # Demonstrates dcmcjpls and dcmdjpls with the ABDOM CT test slices:
 #   1. Lossless compress → decompress round-trip
@@ -13,7 +13,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
-$Ext       = if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Cjpls     = Join-Path $Root "target\debug\dcmcjpls$Ext"
 $Djpls     = Join-Path $Root "target\debug\dcmdjpls$Ext"
 $Dump      = Join-Path $Root "target\debug\dcmdump$Ext"

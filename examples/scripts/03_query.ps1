@@ -1,4 +1,4 @@
-# 03_query.ps1 — findscu showcase
+# 03_query.ps1  -  findscu showcase
 #
 # Shows findscu command-line patterns for C-FIND queries.
 # Set $env:PACS_HOST / $env:PACS_PORT to query a real SCP,
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
-$Ext       = if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Findscu   = Join-Path $Root "target\debug\findscu$Ext"
 
 if (-not (Test-Path $Findscu)) {
@@ -34,7 +34,7 @@ function Example($label, $cmd) {
     Write-Host "  $cmd" -ForegroundColor White
 }
 
-Banner "findscu — C-FIND query examples"
+Banner "findscu  -  C-FIND query examples"
 Write-Host ""
 Write-Host " Set `$env:PACS_HOST / `$env:PACS_PORT to target a running QR SCP."
 

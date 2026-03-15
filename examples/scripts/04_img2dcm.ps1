@@ -1,4 +1,4 @@
-# 04_img2dcm.ps1 — img2dcm showcase
+# 04_img2dcm.ps1  -  img2dcm showcase
 #
 # Creates a test PNG with Python (stdlib only, no extra packages),
 # then wraps it in a DICOM Secondary Capture file and dumps the result.
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
-$Ext       = if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }
+$Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Img2dcm   = Join-Path $Root "target\debug\img2dcm$Ext"
 $Dcmdump   = Join-Path $Root "target\debug\dcmdump$Ext"
 
@@ -37,7 +37,7 @@ function Banner($text) {
 
 try {
     # ── Step 1: create PNG ──────────────────────────────────────────
-    Banner "Step 1 — Create a test PNG with Python"
+    Banner "Step 1  -  Create a test PNG with Python"
 
     $PngPath = Join-Path $WorkDir 'test.png'
 
@@ -68,7 +68,7 @@ write_png(sys.argv[1], 128, 128)
     & $Python -c $PyScript $PngPath
 
     # ── Step 2: convert to DICOM ────────────────────────────────────
-    Banner "Step 2 — Wrap PNG in a DICOM Secondary Capture file"
+    Banner "Step 2  -  Wrap PNG in a DICOM Secondary Capture file"
 
     $OutDcm = Join-Path $WorkDir 'test.dcm'
     & $Img2dcm `
@@ -80,11 +80,11 @@ write_png(sys.argv[1], 128, 128)
         $PngPath $OutDcm
 
     # ── Step 3: dump the result ────────────────────────────────────
-    Banner "Step 3 — Dump the resulting DICOM file"
+    Banner "Step 3  -  Dump the resulting DICOM file"
     & $Dcmdump --meta $OutDcm
 
     # ── Step 4: export as DICOM JSON ───────────────────────────────
-    Banner "Step 4 — Export as DICOM JSON"
+    Banner "Step 4  -  Export as DICOM JSON"
     & $Dcmdump --json $OutDcm | Select-Object -First 50
 
     Banner "Done"
