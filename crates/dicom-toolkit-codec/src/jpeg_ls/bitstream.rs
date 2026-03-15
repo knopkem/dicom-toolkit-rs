@@ -180,7 +180,7 @@ fn find_next_ff(data: &[u8], start: usize) -> usize {
 
 // ── BitWriter ─────────────────────────────────────────────────────────────────
 
-/// Writes bits to a Vec<u8>, handling JPEG-LS FF-bitstuffing.
+/// Writes bits to a `Vec<u8>`, handling JPEG-LS FF-bitstuffing.
 pub struct BitWriter {
     output: Vec<u8>,
     /// Accumulator (MSB-aligned in a u32).

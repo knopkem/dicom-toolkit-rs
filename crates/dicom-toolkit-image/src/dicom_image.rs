@@ -162,7 +162,7 @@ impl DicomImage {
         self.pixels_per_frame() * self.bytes_per_sample()
     }
 
-    /// Number of output channels produced by [`frame_u8`] / [`frame_normalized`].
+    /// Number of output channels produced by [`DicomImage::frame_u8`] / [`DicomImage::frame_normalized`].
     ///
     /// Equal to `samples_per_pixel` for most images, but **3** for
     /// `PALETTE COLOR` (which expands single-channel indices to RGB).
@@ -222,7 +222,7 @@ impl DicomImage {
 
     /// Return frame `frame` as normalized `f32` values in `[0.0, 1.0]`.
     ///
-    /// Applies the same pipeline as [`frame_u8`] and then divides by 255.
+    /// Applies the same pipeline as [`DicomImage::frame_u8`] and then divides by 255.
     pub fn frame_normalized(&self, frame: u32) -> DcmResult<Vec<f32>> {
         let u8_pixels = self.frame_u8(frame)?;
         Ok(u8_pixels.iter().map(|&v| v as f32 / 255.0).collect())

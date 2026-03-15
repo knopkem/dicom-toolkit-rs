@@ -16,7 +16,7 @@ pub struct AssociationConfig {
     pub max_pdu_length: u32,
 
     /// Seconds to wait for a response during association negotiation and
-    /// DIMSE operations before returning [`DcmError::Timeout`].
+    /// DIMSE operations before returning a timeout error.
     pub dimse_timeout_secs: u64,
 
     /// If `true`, the SCP accepts any transfer syntax offered by the SCU
