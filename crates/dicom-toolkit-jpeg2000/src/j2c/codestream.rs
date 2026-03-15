@@ -335,6 +335,10 @@ impl CodingStyleFlags {
         Self { raw: value }
     }
 
+    pub(crate) fn uses_high_throughput_block_coding(&self) -> bool {
+        (self.raw & 0x40) != 0
+    }
+
     pub(crate) fn has_precincts(&self) -> bool {
         (self.raw & 0x01) != 0
     }

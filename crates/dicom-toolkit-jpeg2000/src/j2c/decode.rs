@@ -359,6 +359,14 @@ fn decode_sub_band_bitplanes(
         num_bitplanes as u8
     };
 
+    if component_info
+        .coding_style
+        .flags
+        .uses_high_throughput_block_coding()
+    {
+        bail!(DecodingError::UnsupportedFeature("HTJ2K block decoding"));
+    }
+
     for precinct in sub_band
         .precincts
         .clone()

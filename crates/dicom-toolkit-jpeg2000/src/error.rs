@@ -94,6 +94,8 @@ pub enum ValidationError {
 pub enum DecodingError {
     /// An error occurred while decoding a code-block.
     CodeBlockDecodeFailure,
+    /// The codestream uses a feature that this decoder does not implement yet.
+    UnsupportedFeature(&'static str),
     /// Number of bitplanes in a code-block is too large.
     TooManyBitplanes,
     /// A code-block contains too many coding passes.
@@ -200,6 +202,9 @@ impl fmt::Display for DecodingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::CodeBlockDecodeFailure => write!(f, "failed to decode code-block"),
+            Self::UnsupportedFeature(feature) => {
+                write!(f, "unsupported decoding feature: {feature}")
+            }
             Self::TooManyBitplanes => write!(f, "number of bitplanes is too large"),
             Self::TooManyCodingPasses => {
                 write!(f, "code-block contains too many coding passes")
