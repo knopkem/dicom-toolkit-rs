@@ -66,6 +66,11 @@ MaybePause
 # ── 05: jpegls ───────────────────────────────────────────────────────────────
 Banner "05 · dcmcjpls + dcmdjpls  -  JPEG-LS compress / decompress"
 & "$ScriptDir\05_jpegls.ps1"
+MaybePause
+
+# ── 06: jp2k ─────────────────────────────────────────────────────────────────
+Banner "06 · dcmcjp2k + dcmdjp2k  -  JPEG 2000 compress / decompress"
+& "$ScriptDir\06_jp2k.ps1"
 
 Write-Host ""
 Write-Host ("*" * 64) -ForegroundColor Green

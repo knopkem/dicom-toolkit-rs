@@ -132,8 +132,6 @@ where
     assoc.send_dimse_command(ctx_id, &rsp).await
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use crate::dimse;

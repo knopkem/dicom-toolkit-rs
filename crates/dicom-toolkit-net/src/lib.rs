@@ -20,7 +20,9 @@ pub use presentation::{PcResult, PresentationContextAc, PresentationContextRq};
 pub use server::{DicomServer, DicomServerBuilder, FileStoreProvider};
 pub use services::echo::c_echo;
 pub use services::find::{c_find, handle_find_rq, FindRequest};
-pub use services::get::{c_get, handle_get_rq, GetRequest, GetResponse, GetResult, ReceivedInstance};
+pub use services::get::{
+    c_get, handle_get_rq, GetRequest, GetResponse, GetResult, ReceivedInstance,
+};
 pub use services::provider::{
     DestinationLookup, FindEvent, FindServiceProvider, GetEvent, GetServiceProvider, MoveEvent,
     MoveServiceProvider, RetrieveItem, StaticDestinationLookup, StoreEvent, StoreResult,

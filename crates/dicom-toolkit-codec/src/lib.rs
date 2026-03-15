@@ -1,14 +1,16 @@
 //! ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
 //!
-//! DICOM image compression codecs: JPEG, JPEG-LS, RLE, and codec registry.
+//! DICOM image compression codecs: JPEG, JPEG-LS, JPEG 2000, RLE, and codec registry.
 //!
 //! This crate ports DCMTK's `dcmjpeg` and `dcmjpls` modules.
 
+pub mod jp2k;
 pub mod jpeg;
 pub mod jpeg_ls;
 pub mod registry;
 pub mod rle;
 
+pub use jp2k::Jp2kCodec;
 pub use jpeg::{DecodedFrame, JpegDecoder};
 pub use jpeg_ls::JpegLsCodec;
 pub use registry::{

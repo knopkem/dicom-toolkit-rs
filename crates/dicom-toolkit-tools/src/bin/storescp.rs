@@ -2,8 +2,8 @@
 //!
 //! Port of DCMTK's `storescp` utility.
 //!
-//! This tool uses the [`DicomServer`](dicom_toolkit_net::server::DicomServer)
-//! framework with a [`FileStoreProvider`](dicom_toolkit_net::server::FileStoreProvider)
+//! This tool uses the [`DicomServer`]
+//! framework with a [`FileStoreProvider`]
 //! that writes received instances as `.dcm` files.
 
 use std::path::PathBuf;

@@ -222,32 +222,27 @@ where
         ..Default::default()
     };
 
-    let mut sub_assoc = match Association::request(
-        &dest_addr,
-        &destination,
-        local_ae,
-        &sub_contexts,
-        &sub_cfg,
-    )
-    .await
-    {
-        Ok(a) => a,
-        Err(_) => {
-            // Could not open sub-association — report all as failed.
-            let total = items.len() as u16;
-            let mut rsp = DataSet::new();
-            rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
-            rsp.set_u16(tags::COMMAND_FIELD, 0x8021);
-            rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
-            rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101);
-            rsp.set_u16(tags::STATUS, 0xA801);
-            rsp.set_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS, 0);
-            rsp.set_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS, 0);
-            rsp.set_u16(tags::NUMBER_OF_FAILED_SUB_OPERATIONS, total);
-            rsp.set_u16(tags::NUMBER_OF_WARNING_SUB_OPERATIONS, 0);
-            return assoc.send_dimse_command(ctx_id, &rsp).await;
-        }
-    };
+    let mut sub_assoc =
+        match Association::request(&dest_addr, &destination, local_ae, &sub_contexts, &sub_cfg)
+            .await
+        {
+            Ok(a) => a,
+            Err(_) => {
+                // Could not open sub-association — report all as failed.
+                let total = items.len() as u16;
+                let mut rsp = DataSet::new();
+                rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+                rsp.set_u16(tags::COMMAND_FIELD, 0x8021);
+                rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
+                rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101);
+                rsp.set_u16(tags::STATUS, 0xA801);
+                rsp.set_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS, 0);
+                rsp.set_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS, 0);
+                rsp.set_u16(tags::NUMBER_OF_FAILED_SUB_OPERATIONS, total);
+                rsp.set_u16(tags::NUMBER_OF_WARNING_SUB_OPERATIONS, 0);
+                return assoc.send_dimse_command(ctx_id, &rsp).await;
+            }
+        };
 
     let total = items.len() as u16;
     let mut completed: u16 = 0;

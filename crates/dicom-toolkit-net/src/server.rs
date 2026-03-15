@@ -529,11 +529,8 @@ impl FileStoreProvider {
 
 impl StoreServiceProvider for FileStoreProvider {
     async fn on_store(&self, event: StoreEvent) -> StoreResult {
-        let ff = FileFormat::from_dataset(
-            &event.sop_class_uid,
-            &event.sop_instance_uid,
-            event.dataset,
-        );
+        let ff =
+            FileFormat::from_dataset(&event.sop_class_uid, &event.sop_instance_uid, event.dataset);
 
         let safe: String = event
             .sop_instance_uid

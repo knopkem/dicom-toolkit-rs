@@ -14,6 +14,7 @@ categories.workspace = true
 dicom-toolkit-core.workspace = true
 dicom-toolkit-dict.workspace = true
 dicom-toolkit-data.workspace = true
+hayro-jpeg2000.workspace = true
 jpeg-decoder.workspace = true
 jpeg-encoder.workspace = true
 flate2.workspace = true

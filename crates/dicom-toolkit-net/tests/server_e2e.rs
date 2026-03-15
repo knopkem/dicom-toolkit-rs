@@ -4,6 +4,7 @@
 //! that talks to it over loopback TCP.  Port 0 is used throughout so the OS
 //! assigns a free ephemeral port — tests can run in parallel.
 
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
 use dicom_toolkit_core::uid::sop_class;
@@ -19,9 +20,9 @@ use dicom_toolkit_net::services::get::GetRequest;
 use dicom_toolkit_net::services::r#move::MoveRequest;
 use dicom_toolkit_net::services::store::StoreRequest;
 use dicom_toolkit_net::{
-    c_echo, c_find, c_get, c_move, c_store, Association, FindEvent, FindServiceProvider,
-    GetEvent, GetServiceProvider, MoveEvent, MoveServiceProvider, RetrieveItem,
-    StaticDestinationLookup, StoreEvent, StoreResult, StoreServiceProvider, STATUS_SUCCESS,
+    c_echo, c_find, c_get, c_move, c_store, Association, FindEvent, FindServiceProvider, GetEvent,
+    GetServiceProvider, MoveEvent, MoveServiceProvider, RetrieveItem, StaticDestinationLookup,
+    StoreEvent, StoreResult, StoreServiceProvider, STATUS_SUCCESS,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,6 +92,18 @@ fn scu_config() -> AssociationConfig {
     }
 }
 
+fn loopback_addr(addr: SocketAddr) -> SocketAddr {
+    match addr {
+        SocketAddr::V4(v4) if v4.ip().is_unspecified() => {
+            SocketAddr::from((Ipv4Addr::LOCALHOST, v4.port()))
+        }
+        SocketAddr::V6(v6) if v6.ip().is_unspecified() => {
+            SocketAddr::from((Ipv6Addr::LOCALHOST, v6.port()))
+        }
+        _ => addr,
+    }
+}
+
 // ── In-memory providers ───────────────────────────────────────────────────────
 
 /// Records every stored instance for test assertions.
@@ -154,7 +167,7 @@ async fn test_server_echo_builtin() {
         .await
         .expect("build server");
 
-    let addr = server.local_addr().expect("local addr");
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
     let token = server.cancellation_token();
 
     tokio::spawn(async move { server.run().await });
@@ -191,7 +204,7 @@ async fn test_server_store_loopback() {
         .await
         .expect("build server");
 
-    let addr = server.local_addr().expect("local addr");
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
     let token = server.cancellation_token();
 
     tokio::spawn(async move { server.run().await });
@@ -253,7 +266,7 @@ async fn test_server_find_loopback() {
         .await
         .expect("build server");
 
-    let addr = server.local_addr().expect("local addr");
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
     let token = server.cancellation_token();
 
     tokio::spawn(async move { server.run().await });
@@ -318,7 +331,7 @@ async fn test_server_get_loopback() {
         .await
         .expect("build server");
 
-    let addr = server.local_addr().expect("local addr");
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
     let token = server.cancellation_token();
 
     tokio::spawn(async move { server.run().await });
@@ -363,7 +376,11 @@ async fn test_server_get_loopback() {
     assert_eq!(result.instances.len(), 1, "expected 1 instance received");
     assert_eq!(result.instances[0].sop_instance_uid, "1.2.3.server.get.1");
     let final_rsp = result.responses.last().unwrap();
-    assert_eq!(final_rsp.status & 0xFF00, 0, "final status should be success/warning");
+    assert_eq!(
+        final_rsp.status & 0xFF00,
+        0,
+        "final status should be success/warning"
+    );
 }
 
 /// C-MOVE from a DicomServer — forwards instances to a storage SCP.
@@ -380,7 +397,7 @@ async fn test_server_move_loopback() {
         .await
         .expect("build storage server");
 
-    let storage_addr = storage_server.local_addr().expect("storage addr");
+    let storage_addr = loopback_addr(storage_server.local_addr().expect("storage addr"));
     let storage_token = storage_server.cancellation_token();
     tokio::spawn(async move { storage_server.run().await });
 
@@ -388,10 +405,8 @@ async fn test_server_move_loopback() {
     let inst_ds = make_ct_dataset("1.2.3.server.move.1", "Patient^Move");
     let inst_bytes = encode_dataset(&inst_ds);
 
-    let dest_lookup = StaticDestinationLookup::new(vec![(
-        "STORESCP".to_string(),
-        storage_addr.to_string(),
-    )]);
+    let dest_lookup =
+        StaticDestinationLookup::new(vec![("STORESCP".to_string(), storage_addr.to_string())]);
 
     let qr_server = DicomServer::builder()
         .ae_title("QRSCP")
@@ -408,7 +423,7 @@ async fn test_server_move_loopback() {
         .await
         .expect("build QR server");
 
-    let qr_addr = qr_server.local_addr().expect("QR addr");
+    let qr_addr = loopback_addr(qr_server.local_addr().expect("QR addr"));
     let qr_token = qr_server.cancellation_token();
     tokio::spawn(async move { qr_server.run().await });
 
@@ -484,7 +499,7 @@ async fn test_server_concurrent_associations() {
         .await
         .expect("build server");
 
-    let addr = server.local_addr().expect("local addr");
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
     let token = server.cancellation_token();
 
     tokio::spawn(async move { server.run().await });
@@ -533,7 +548,11 @@ async fn test_server_concurrent_associations() {
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let stored = store_check.stored.lock().unwrap();
-    assert_eq!(stored.len(), 5, "all 5 concurrent stores should be received");
+    assert_eq!(
+        stored.len(),
+        5,
+        "all 5 concurrent stores should be received"
+    );
 
     token.cancel();
 }
@@ -548,7 +567,7 @@ async fn test_server_graceful_shutdown() {
         .await
         .expect("build server");
 
-    let addr = server.local_addr().expect("local addr");
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
     let token = server.cancellation_token();
 
     let handle = tokio::spawn(async move { server.run().await });

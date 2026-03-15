@@ -8,7 +8,7 @@ A pure-Rust port of [DCMTK](https://dicom.offis.de/dcmtk.php.en) 3.7.0 — a com
 
 This is an independent project, not affiliated with or endorsed by OFFIS e.V. See [NOTICE](NOTICE) for attribution details.
 
-[![Tests](https://img.shields.io/badge/tests-428%20passing-brightgreen)](#status)
+[![Tests](https://img.shields.io/badge/tests-487%20passing-brightgreen)](#status)
 
 ---
 
@@ -16,11 +16,12 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 
 | Tier | Scope | Tests |
 |------|-------|-------|
-| 1 — Foundation | `dicom-toolkit-core`, `dicom-toolkit-dict` | 49 + 59 |
-| 2 — Data model & I/O | `dicom-toolkit-data` | 129 + 31 integration |
-| 3 — Networking | `dicom-toolkit-net` | 48 unit + 4 protocol E2E + 7 server E2E |
-| 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec` | 44 + 77 |
-| **Total** | | **428 passing, 0 failed** |
+| 1 — Foundation | `dicom-toolkit-core`, `dicom-toolkit-dict` | 43 + 38 |
+| 2 — Data model & I/O | `dicom-toolkit-data` | 153 |
+| 3 — Networking | `dicom-toolkit-net` | 59 |
+| 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec`, `hayro-jpeg2000` | 44 + 89 + 46 |
+| Tools | `dicom-toolkit-tools` | 9 integration |
+| **Total** | | **481 unit/integration + 6 doctests = 487 passing, 0 failed** |
 
 ---
 
@@ -33,14 +34,15 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 | [`dicom-toolkit-data`](crates/dicom-toolkit-data) | `dcmdata` | DICOM data model, Part 10 file reader/writer, DICOM JSON (PS3.18), XML, deflate |
 | [`dicom-toolkit-net`](crates/dicom-toolkit-net) | `dcmnet`, `dcmtls` | Async DICOM networking: PDU layer, association, C-ECHO/STORE/FIND/GET/MOVE, TLS |
 | [`dicom-toolkit-image`](crates/dicom-toolkit-image) | `dcmimgle`, `dcmimage` | Pixel pipeline, Modality/VOI LUT, window/level, overlays, color models, PNG export |
-| [`dicom-toolkit-codec`](crates/dicom-toolkit-codec) | `dcmjpeg`, `dcmjpls`, `dcmrle` | JPEG baseline, **pure-Rust JPEG-LS** (lossless & near-lossless, 2–16 bit), RLE PackBits, codec registry |
-| [`dicom-toolkit-tools`](crates/dicom-toolkit-tools) | `dcmdump`, `echoscu`, etc. | CLI utilities: dump, network SCU/SCP, img2dcm, JPEG-LS compress/decompress (see below) |
+| [`dicom-toolkit-codec`](crates/dicom-toolkit-codec) | `dcmjpeg`, `dcmjpls`, `dcmrle`, `dcmjp2k` | JPEG baseline, **pure-Rust JPEG-LS**, **pure-Rust JPEG 2000** (lossless & lossy), RLE PackBits, codec registry |
+| [`dicom-toolkit-tools`](crates/dicom-toolkit-tools) | `dcmdump`, `echoscu`, etc. | CLI utilities: dump, network SCU/SCP, img2dcm, JPEG-LS/JPEG 2000 compress/decompress (see below) |
+| [`hayro-jpeg2000`](crates/hayro-jpeg2000) | internal fork | Pure-Rust JPEG 2000 engine used by `dicom-toolkit-codec`; native-bit-depth decode plus DICOM-focused encoder |
 
 ---
 
 ## Requirements
 
-- Rust **1.75** or later
+- Rust **1.80** or later
 - `cargo`
 
 No C/C++ compiler or external native libraries are required — all dependencies are pure Rust or bundled.
@@ -392,6 +394,58 @@ dcmcjpls -v image.dcm /tmp/compressed.dcm
 dcmdjpls -v /tmp/compressed.dcm /tmp/roundtrip.dcm
 ```
 
+### `dcmcjp2k` — compress DICOM to JPEG 2000
+
+```
+dcmcjp2k [OPTIONS] <INPUT> <OUTPUT>
+
+Arguments:
+  <INPUT>   Input DICOM file (uncompressed or decompressible)
+  <OUTPUT>  Output DICOM file (JPEG 2000 compressed)
+
+Options:
+  -l, --encode-lossless   Force lossless JPEG 2000 (default)
+      --encode-lossy      Use irreversible JPEG 2000
+  -v, --verbose
+```
+
+**Examples**
+
+```bash
+# Lossless JPEG 2000 compression (TS .90)
+dcmcjp2k image.dcm image_j2k.dcm
+
+# Irreversible/lossy JPEG 2000 (TS .91)
+dcmcjp2k --encode-lossy -v image.dcm image_j2k_lossy.dcm
+
+# Batch compress
+for f in study/*.dcm; do dcmcjp2k "$f" "jp2k/$(basename "$f")"; done
+```
+
+### `dcmdjp2k` — decompress JPEG 2000 DICOM
+
+```
+dcmdjp2k [OPTIONS] <INPUT> <OUTPUT>
+
+Arguments:
+  <INPUT>   Input DICOM file (JPEG 2000 compressed)
+  <OUTPUT>  Output DICOM file (Explicit VR Little Endian)
+
+Options:
+  -v, --verbose
+```
+
+**Examples**
+
+```bash
+# Decompress a JPEG 2000 file
+dcmdjp2k image_j2k.dcm image_raw.dcm
+
+# Verbose round-trip
+dcmcjp2k -v image.dcm /tmp/compressed_j2k.dcm
+dcmdjp2k -v /tmp/compressed_j2k.dcm /tmp/roundtrip.dcm
+```
+
 ---
 
 ## Example Scripts
@@ -405,7 +459,8 @@ Ready-to-run scripts live in [`examples/scripts/`](examples/scripts/) and use th
 | `03_query` | `findscu` command patterns; set `RUN_LIVE=1` / `$env:RUN_LIVE='1'` to query a real PACS |
 | `04_img2dcm` | Generate a PNG with Python stdlib → wrap as Secondary Capture → dump + JSON export |
 | `05_jpegls` | JPEG-LS lossless & near-lossless round-trip, batch compress/decompress, metadata verification |
-| `demo` | Master script — runs all five above in order |
+| `06_jp2k` | JPEG 2000 lossless round-trip, lossy smoke test, batch compress/decompress, metadata verification |
+| `demo` | Master script — runs all six above in order |
 
 Two equivalent versions are provided for each script:
 
@@ -420,6 +475,7 @@ bash examples/scripts/01_dump.sh
 bash examples/scripts/02_network.sh
 bash examples/scripts/04_img2dcm.sh
 bash examples/scripts/05_jpegls.sh
+bash examples/scripts/06_jp2k.sh
 ```
 
 ### Windows (PowerShell)
@@ -432,7 +488,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
 ```powershell
-# Run the full demo (non-interactive)
+# Run the full demo
 pwsh -File examples/scripts/demo.ps1
 
 # Run with a pause between sections
@@ -442,6 +498,8 @@ pwsh -File examples/scripts/demo.ps1 -Pause
 pwsh -File examples/scripts/01_dump.ps1
 pwsh -File examples/scripts/02_network.ps1
 pwsh -File examples/scripts/04_img2dcm.ps1
+pwsh -File examples/scripts/05_jpegls.ps1
+pwsh -File examples/scripts/06_jp2k.ps1
 ```
 
 The PowerShell scripts also work on macOS and Linux with [PowerShell Core](https://github.com/PowerShell/PowerShell).
@@ -495,6 +553,24 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 | `scan.rs` | Core scan encoder/decoder (line-by-line processing) |
 | `decoder.rs` | Top-level decoder: markers → scan decoder → pixels |
 | `encoder.rs` | Top-level encoder: pixels → scan encoder → bitstream |
+
+---
+
+## JPEG 2000 Codec
+
+`dicom-toolkit-codec` now includes **pure-Rust JPEG 2000** support backed by the in-workspace `hayro-jpeg2000` fork. No C/C++ bindings are used.
+
+**Supported features:**
+- DICOM transfer syntaxes `1.2.840.10008.1.2.4.90` (lossless) and `1.2.840.10008.1.2.4.91`
+- Native-bit-depth encode/decode for 8-, 12-, and 16-bit medical images
+- Grayscale and RGB pixel data
+- Library-level encode/decode plus CLI tools `dcmcjp2k` and `dcmdjp2k`
+- Multi-fragment decode (one codestream per frame) in the codec/tools path
+
+**Current scope:**
+- JPEG 2000 Part 1 codestreams aimed at common DICOM usage
+- Single quality layer in the current encoder
+- Lossless and basic lossy mode; quality tuning is not yet exposed as a user-facing option
 
 ---
 
@@ -576,9 +652,10 @@ Ships ready to use — receives DICOM instances and saves them as `.dcm` files:
 
 ## Known Limitations
 
-- **JPEG 2000**: not yet implemented.
 - **Worklist / MPPS**: not yet ported.
 - **JPEG-LS ILV_SAMPLE**: pixel-interleaved multi-component mode not yet supported (ILV_NONE and ILV_LINE work).
+- **JPEG 2000 advanced profiles**: HTJ2K and Part 2 multi-component features are not implemented yet.
+- **JPEG 2000 lossy tuning**: current tools expose lossless vs. lossy mode, but not quality/rate controls yet.
 
 ---
 

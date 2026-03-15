@@ -8,6 +8,7 @@ members = [
     "crates/dicom-toolkit-image",
     "crates/dicom-toolkit-codec",
     "crates/dicom-toolkit-tools",
+    "crates/hayro-jpeg2000",
 ]
 
 [workspace.package]
@@ -28,6 +29,9 @@ dicom-toolkit-data = { path = "crates/dicom-toolkit-data", version = "0.1.0" }
 dicom-toolkit-net = { path = "crates/dicom-toolkit-net", version = "0.1.0" }
 dicom-toolkit-image = { path = "crates/dicom-toolkit-image", version = "0.1.0" }
 dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec", version = "0.1.0" }
+
+# JPEG 2000 (forked for DICOM 16-bit support)
+hayro-jpeg2000 = { path = "crates/hayro-jpeg2000", default-features = false, features = ["std", "simd"] }
 
 # Error handling
 thiserror = "2"

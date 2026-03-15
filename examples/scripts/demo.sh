@@ -50,6 +50,11 @@ pause
 # ─── 05: jpegls ───────────────────────────────────────────────────────────────
 banner "05 · dcmcjpls + dcmdjpls — JPEG-LS compress / decompress"
 bash "$SCRIPT_DIR/05_jpegls.sh"
+pause
+
+# ─── 06: jp2k ─────────────────────────────────────────────────────────────────
+banner "06 · dcmcjp2k + dcmdjp2k — JPEG 2000 compress / decompress"
+bash "$SCRIPT_DIR/06_jp2k.sh"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"

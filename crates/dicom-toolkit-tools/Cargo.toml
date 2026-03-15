@@ -8,7 +8,7 @@ repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "CLI tools for DICOM: dcmdump, echoscu, storescu, storescp, findscu, img2dcm, dcmcjpls, dcmdjpls"
+description = "CLI tools for DICOM: dcmdump, echoscu, storescu, storescp, findscu, img2dcm, dcmcjpls, dcmdjpls, dcmcjp2k, dcmdjp2k"
 
 [dependencies]
 dicom-toolkit-core.workspace = true
@@ -57,3 +57,11 @@ path = "src/bin/dcmcjpls.rs"
 [[bin]]
 name = "dcmdjpls"
 path = "src/bin/dcmdjpls.rs"
+
+[[bin]]
+name = "dcmcjp2k"
+path = "src/bin/dcmcjp2k.rs"
+
+[[bin]]
+name = "dcmdjp2k"
+path = "src/bin/dcmdjp2k.rs"

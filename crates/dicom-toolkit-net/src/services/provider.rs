@@ -98,10 +98,7 @@ pub trait StoreServiceProvider: Send + Sync + 'static {
     /// Called when the server receives a C-STORE-RQ.
     ///
     /// The returned status is forwarded to the SCU in the C-STORE-RSP.
-    fn on_store(
-        &self,
-        event: StoreEvent,
-    ) -> impl std::future::Future<Output = StoreResult> + Send;
+    fn on_store(&self, event: StoreEvent) -> impl std::future::Future<Output = StoreResult> + Send;
 }
 
 // ── C-FIND provider ───────────────────────────────────────────────────────────
@@ -127,10 +124,7 @@ pub trait FindServiceProvider: Send + Sync + 'static {
     ///
     /// Each `DataSet` in the returned `Vec` is sent as a pending
     /// C-FIND-RSP; a final success response is appended automatically.
-    fn on_find(
-        &self,
-        event: FindEvent,
-    ) -> impl std::future::Future<Output = Vec<DataSet>> + Send;
+    fn on_find(&self, event: FindEvent) -> impl std::future::Future<Output = Vec<DataSet>> + Send;
 }
 
 // ── C-GET provider ────────────────────────────────────────────────────────────
@@ -258,10 +252,7 @@ mod tests {
             lookup.lookup("STORESCP"),
             Some("127.0.0.1:4242".to_string())
         );
-        assert_eq!(
-            lookup.lookup("ARCHIVE"),
-            Some("10.0.0.1:11112".to_string())
-        );
+        assert_eq!(lookup.lookup("ARCHIVE"), Some("10.0.0.1:11112".to_string()));
     }
 
     #[test]
