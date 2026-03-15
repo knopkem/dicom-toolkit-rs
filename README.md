@@ -8,7 +8,7 @@ A pure-Rust port of [DCMTK](https://dicom.offis.de/dcmtk.php.en) 3.7.0 — a com
 
 This is an independent project, not affiliated with or endorsed by OFFIS e.V. See [NOTICE](NOTICE) for attribution details.
 
-[![Tests](https://img.shields.io/badge/tests-410%20passing-brightgreen)](#status)
+[![Tests](https://img.shields.io/badge/tests-428%20passing-brightgreen)](#status)
 
 ---
 
@@ -18,9 +18,9 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 |------|-------|-------|
 | 1 — Foundation | `dicom-toolkit-core`, `dicom-toolkit-dict` | 49 + 59 |
 | 2 — Data model & I/O | `dicom-toolkit-data` | 129 + 31 integration |
-| 3 — Networking | `dicom-toolkit-net` | 43 unit + 4 E2E |
+| 3 — Networking | `dicom-toolkit-net` | 48 unit + 4 protocol E2E + 7 server E2E |
 | 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec` | 44 + 77 |
-| **Total** | | **410 passing, 0 failed** |
+| **Total** | | **428 passing, 0 failed** |
 
 ---
 
@@ -446,7 +446,7 @@ pwsh -File examples/scripts/04_img2dcm.ps1
 
 The PowerShell scripts also work on macOS and Linux with [PowerShell Core](https://github.com/PowerShell/PowerShell).
 
-> **Note:** `03_query` shows command-line patterns but does not execute live queries by default. The `storescp` binary handles C-STORE only; for a full Query/Retrieve SCP use [Orthanc](https://www.orthanc-server.com/) and set `RUN_LIVE=1`. C-FIND, C-GET, and C-MOVE are covered by E2E loopback tests in `crates/dicom-toolkit-net/tests/e2e.rs`.
+> **Note:** `03_query` shows command-line patterns but does not execute live queries by default. The `storescp` binary now uses the `DicomServer` framework. C-FIND, C-GET, and C-MOVE SCP handling is available in-process via the library; see [DicomServer](#dicomserver) below. Set `RUN_LIVE=1` to use an external Orthanc instance with the query scripts.
 
 ---
 
@@ -495,6 +495,82 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 | `scan.rs` | Core scan encoder/decoder (line-by-line processing) |
 | `decoder.rs` | Top-level decoder: markers → scan decoder → pixels |
 | `encoder.rs` | Top-level encoder: pixels → scan encoder → bitstream |
+
+---
+
+## DicomServer
+
+`dicom-toolkit-net` now ships a generic `DicomServer` for building full PACS SCPs.  
+It manages concurrent TCP associations, request routing, and graceful shutdown.  
+You plug in your own logic via provider traits; the library handles all DICOM protocol mechanics.
+
+### Quick start
+
+```rust
+use dicom_toolkit_net::server::{DicomServer, FileStoreProvider};
+
+#[tokio::main]
+async fn main() {
+    let server = DicomServer::builder()
+        .ae_title("MYPACS")
+        .port(4242)
+        .store_provider(FileStoreProvider::new("/data/dicom"))
+        .build()
+        .await
+        .expect("bind port");
+
+    server.run().await.expect("server error");
+}
+```
+
+### Provider traits
+
+Implement one or more of these traits to add your own business logic:
+
+| Trait | Service | Callback |
+|-------|---------|----------|
+| `StoreServiceProvider` | C-STORE | `async fn on_store(&self, StoreEvent) -> StoreResult` |
+| `FindServiceProvider` | C-FIND | `async fn on_find(&self, FindEvent) -> Vec<DataSet>` |
+| `GetServiceProvider` | C-GET | `async fn on_get(&self, GetEvent) -> Vec<RetrieveItem>` |
+| `MoveServiceProvider` | C-MOVE | `async fn on_move(&self, MoveEvent) -> Vec<RetrieveItem>` |
+
+C-ECHO is always handled automatically without a trait.
+
+### DicomServerBuilder options
+
+```rust
+DicomServer::builder()
+    .ae_title("MYPACS")           // AE title (default: "DICOMRS")
+    .port(4242)                    // TCP port (default: 4242)
+    .max_associations(100)         // Max concurrent associations
+    .store_provider(my_store)      // C-STORE SCP
+    .find_provider(my_query)       // C-FIND SCP
+    .get_provider(my_get)          // C-GET SCP
+    .move_provider(my_move)        // C-MOVE SCP
+    .move_destination_lookup(      // AE→host:port for C-MOVE sub-associations
+        StaticDestinationLookup::new(vec![
+            ("STORESCP".into(), "10.0.0.1:4242".into()),
+        ])
+    )
+    .build()
+    .await?
+```
+
+### Graceful shutdown
+
+```rust
+let token = server.cancellation_token();
+// In another task or signal handler:
+token.cancel(); // server.run() returns cleanly
+```
+
+### Built-in provider: `FileStoreProvider`
+
+Ships ready to use — receives DICOM instances and saves them as `.dcm` files:
+
+```rust
+.store_provider(FileStoreProvider::new("/tmp/incoming"))
+```
 
 ---
 

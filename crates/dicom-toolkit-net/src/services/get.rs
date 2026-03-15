@@ -1,10 +1,11 @@
 //! C-GET (Query/Retrieve — Retrieve Service to initiating AE) — PS3.4 §C.4.3.
 
 use dicom_toolkit_core::error::DcmResult;
-use dicom_toolkit_data::DataSet;
+use dicom_toolkit_data::{io::reader::DicomReader, DataSet};
 use dicom_toolkit_dict::tags;
 
 use crate::association::Association;
+use crate::services::provider::{GetEvent, GetServiceProvider};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -179,6 +180,119 @@ fn next_message_id() -> u16 {
     use std::sync::atomic::{AtomicU16, Ordering};
     static ID: AtomicU16 = AtomicU16::new(1);
     ID.fetch_add(1, Ordering::Relaxed)
+}
+
+const TS_EXPLICIT_LE: &str = "1.2.840.10008.1.2.1";
+
+// ── SCP handler ───────────────────────────────────────────────────────────────
+
+/// Handle a C-GET-RQ received on an SCP association.
+///
+/// Reads the query identifier, calls the provider's
+/// [`on_get`](GetServiceProvider::on_get) callback, then sends each
+/// retrieved instance to the SCU as a C-STORE sub-operation on the
+/// **same** association, interleaved with pending C-GET-RSP status
+/// messages.  A final C-GET-RSP is sent when all sub-operations complete.
+///
+/// `ctx_id` and `cmd` are the values returned by
+/// [`Association::recv_dimse_command`].
+pub async fn handle_get_rq<P>(
+    assoc: &mut Association,
+    ctx_id: u8,
+    cmd: &DataSet,
+    provider: &P,
+) -> DcmResult<()>
+where
+    P: GetServiceProvider,
+{
+    let sop_class = cmd
+        .get_string(tags::AFFECTED_SOP_CLASS_UID)
+        .unwrap_or_default()
+        .trim_end_matches('\0')
+        .to_string();
+    let msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
+
+    let query_bytes = assoc.recv_dimse_data().await?;
+
+    let ts = assoc
+        .context_by_id(ctx_id)
+        .map(|pc| pc.transfer_syntax.trim_end_matches('\0').to_string())
+        .unwrap_or_else(|| TS_EXPLICIT_LE.to_string());
+
+    let identifier = DicomReader::new(query_bytes.as_slice())
+        .read_dataset(&ts)
+        .unwrap_or_else(|_| DataSet::new());
+
+    let event = GetEvent {
+        calling_ae: assoc.calling_ae.clone(),
+        sop_class_uid: sop_class.clone(),
+        identifier,
+    };
+
+    let items = provider.on_get(event).await;
+    let total = items.len() as u16;
+    let mut completed: u16 = 0;
+    let mut failed: u16 = 0;
+
+    for item in &items {
+        let remaining = total.saturating_sub(completed + failed + 1);
+
+        // Find a suitable presentation context for the SOP class.
+        let store_ctx = assoc.find_context(&item.sop_class_uid).map(|pc| pc.id);
+
+        if let Some(store_ctx_id) = store_ctx {
+            let sub_msg_id = next_message_id();
+
+            let mut store_rq = DataSet::new();
+            store_rq.set_uid(tags::AFFECTED_SOP_CLASS_UID, &item.sop_class_uid);
+            store_rq.set_u16(tags::COMMAND_FIELD, 0x0001); // C-STORE-RQ
+            store_rq.set_u16(tags::MESSAGE_ID, sub_msg_id);
+            store_rq.set_u16(tags::PRIORITY, 0);
+            store_rq.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0000); // dataset present
+            store_rq.set_uid(tags::AFFECTED_SOP_INSTANCE_UID, &item.sop_instance_uid);
+
+            assoc.send_dimse_command(store_ctx_id, &store_rq).await?;
+            assoc.send_dimse_data(store_ctx_id, &item.dataset).await?;
+
+            // Wait for C-STORE-RSP from SCU.
+            let (_rsp_ctx, store_rsp) = assoc.recv_dimse_command().await?;
+            let store_status = store_rsp.get_u16(tags::STATUS).unwrap_or(0xFFFF);
+            if store_status == 0x0000 {
+                completed += 1;
+            } else {
+                failed += 1;
+            }
+
+            // Send pending C-GET-RSP with updated counts.
+            let mut pending_rsp = DataSet::new();
+            pending_rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+            pending_rsp.set_u16(tags::COMMAND_FIELD, 0x8010); // C-GET-RSP
+            pending_rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
+            pending_rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101); // no dataset
+            pending_rsp.set_u16(tags::STATUS, 0xFF00); // pending
+            pending_rsp.set_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS, remaining);
+            pending_rsp.set_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS, completed);
+            pending_rsp.set_u16(tags::NUMBER_OF_FAILED_SUB_OPERATIONS, failed);
+            pending_rsp.set_u16(tags::NUMBER_OF_WARNING_SUB_OPERATIONS, 0);
+            assoc.send_dimse_command(ctx_id, &pending_rsp).await?;
+        } else {
+            failed += 1;
+        }
+    }
+
+    let final_status: u16 = if failed > 0 { 0xB000 } else { 0x0000 };
+
+    let mut final_rsp = DataSet::new();
+    final_rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+    final_rsp.set_u16(tags::COMMAND_FIELD, 0x8010); // C-GET-RSP
+    final_rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
+    final_rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101); // no dataset
+    final_rsp.set_u16(tags::STATUS, final_status);
+    final_rsp.set_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS, 0);
+    final_rsp.set_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS, completed);
+    final_rsp.set_u16(tags::NUMBER_OF_FAILED_SUB_OPERATIONS, failed);
+    final_rsp.set_u16(tags::NUMBER_OF_WARNING_SUB_OPERATIONS, 0);
+    assoc.send_dimse_command(ctx_id, &final_rsp).await
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

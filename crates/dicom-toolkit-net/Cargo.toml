@@ -15,6 +15,7 @@ dicom-toolkit-core.workspace = true
 dicom-toolkit-dict.workspace = true
 dicom-toolkit-data.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tokio-rustls.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true

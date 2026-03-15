@@ -1,10 +1,11 @@
 //! C-STORE (Storage Service Class) — PS3.4 §B.
 
 use dicom_toolkit_core::error::DcmResult;
-use dicom_toolkit_data::DataSet;
+use dicom_toolkit_data::{io::reader::DicomReader, DataSet};
 use dicom_toolkit_dict::tags;
 
 use crate::association::Association;
+use crate::services::provider::{StoreEvent, StoreServiceProvider};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -68,7 +69,70 @@ fn next_message_id() -> u16 {
     ID.fetch_add(1, Ordering::Relaxed)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── SCP handler ───────────────────────────────────────────────────────────────
+
+/// Handle a C-STORE-RQ received on an SCP association.
+///
+/// Reads the incoming data set, decodes it, calls the provider's
+/// [`on_store`](StoreServiceProvider::on_store) callback, and sends the
+/// C-STORE-RSP back to the SCU.
+///
+/// `ctx_id` and `cmd` are the values returned by
+/// [`Association::recv_dimse_command`].
+pub async fn handle_store_rq<P>(
+    assoc: &mut Association,
+    ctx_id: u8,
+    cmd: &DataSet,
+    provider: &P,
+) -> DcmResult<()>
+where
+    P: StoreServiceProvider,
+{
+    let sop_class = cmd
+        .get_string(tags::AFFECTED_SOP_CLASS_UID)
+        .unwrap_or_default()
+        .trim_end_matches('\0')
+        .to_string();
+    let sop_instance = cmd
+        .get_string(tags::AFFECTED_SOP_INSTANCE_UID)
+        .unwrap_or_default()
+        .trim_end_matches('\0')
+        .to_string();
+    let msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
+
+    let data = assoc.recv_dimse_data().await?;
+
+    // Decode dataset using the negotiated transfer syntax.
+    let ts_uid = assoc
+        .context_by_id(ctx_id)
+        .map(|pc| pc.transfer_syntax.trim_end_matches('\0').to_string())
+        .unwrap_or_else(|| "1.2.840.10008.1.2.1".to_string());
+
+    let dataset = DicomReader::new(data.as_slice())
+        .read_dataset(&ts_uid)
+        .unwrap_or_else(|_| DataSet::new());
+
+    let event = StoreEvent {
+        calling_ae: assoc.calling_ae.clone(),
+        sop_class_uid: sop_class.clone(),
+        sop_instance_uid: sop_instance.clone(),
+        dataset,
+    };
+
+    let result = provider.on_store(event).await;
+
+    let mut rsp = DataSet::new();
+    rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+    rsp.set_u16(tags::COMMAND_FIELD, 0x8001); // C-STORE-RSP
+    rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
+    rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101); // no dataset
+    rsp.set_uid(tags::AFFECTED_SOP_INSTANCE_UID, &sop_instance);
+    rsp.set_u16(tags::STATUS, result.status);
+
+    assoc.send_dimse_command(ctx_id, &rsp).await
+}
+
+
 
 #[cfg(test)]
 mod tests {

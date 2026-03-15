@@ -1,10 +1,11 @@
 //! C-FIND (Query/Retrieve — Query Service) — PS3.4 §C.
 
 use dicom_toolkit_core::error::DcmResult;
-use dicom_toolkit_data::DataSet;
+use dicom_toolkit_data::{io::reader::DicomReader, io::writer::DicomWriter, DataSet};
 use dicom_toolkit_dict::tags;
 
 use crate::association::Association;
+use crate::services::provider::{FindEvent, FindServiceProvider};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -75,6 +76,91 @@ fn next_message_id() -> u16 {
     use std::sync::atomic::{AtomicU16, Ordering};
     static ID: AtomicU16 = AtomicU16::new(1);
     ID.fetch_add(1, Ordering::Relaxed)
+}
+
+// ── Encode helpers ────────────────────────────────────────────────────────────
+
+const TS_EXPLICIT_LE: &str = "1.2.840.10008.1.2.1";
+
+fn encode_dataset(ds: &DataSet) -> Vec<u8> {
+    let mut buf = Vec::new();
+    DicomWriter::new(&mut buf)
+        .write_dataset(ds, TS_EXPLICIT_LE)
+        .unwrap_or_default();
+    buf
+}
+
+// ── SCP handler ───────────────────────────────────────────────────────────────
+
+/// Handle a C-FIND-RQ received on an SCP association.
+///
+/// Reads the query identifier dataset, calls the provider's
+/// [`on_find`](FindServiceProvider::on_find) callback, and streams the
+/// results back as pending C-FIND-RSP messages followed by a final
+/// success response.
+///
+/// `ctx_id` and `cmd` are the values returned by
+/// [`Association::recv_dimse_command`].
+pub async fn handle_find_rq<P>(
+    assoc: &mut Association,
+    ctx_id: u8,
+    cmd: &DataSet,
+    provider: &P,
+) -> DcmResult<()>
+where
+    P: FindServiceProvider,
+{
+    let sop_class = cmd
+        .get_string(tags::AFFECTED_SOP_CLASS_UID)
+        .unwrap_or_default()
+        .trim_end_matches('\0')
+        .to_string();
+    let msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
+
+    let query_bytes = assoc.recv_dimse_data().await?;
+
+    // Decode using the negotiated transfer syntax.
+    let ts = assoc
+        .context_by_id(ctx_id)
+        .map(|pc| pc.transfer_syntax.trim_end_matches('\0').to_string())
+        .unwrap_or_else(|| TS_EXPLICIT_LE.to_string());
+
+    let identifier = DicomReader::new(query_bytes.as_slice())
+        .read_dataset(&ts)
+        .unwrap_or_else(|_| DataSet::new());
+
+    let event = FindEvent {
+        calling_ae: assoc.calling_ae.clone(),
+        sop_class_uid: sop_class.clone(),
+        identifier,
+    };
+
+    let matches = provider.on_find(event).await;
+
+    // Send one pending RSP per match.
+    for result_ds in &matches {
+        let result_bytes = encode_dataset(result_ds);
+
+        let mut rsp = DataSet::new();
+        rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+        rsp.set_u16(tags::COMMAND_FIELD, 0x8020); // C-FIND-RSP
+        rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
+        rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0000); // dataset present
+        rsp.set_u16(tags::STATUS, 0xFF00); // pending
+
+        assoc.send_dimse_command(ctx_id, &rsp).await?;
+        assoc.send_dimse_data(ctx_id, &result_bytes).await?;
+    }
+
+    // Send final success response (no dataset).
+    let mut final_rsp = DataSet::new();
+    final_rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+    final_rsp.set_u16(tags::COMMAND_FIELD, 0x8020); // C-FIND-RSP
+    final_rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
+    final_rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101); // no dataset
+    final_rsp.set_u16(tags::STATUS, 0x0000); // success
+
+    assoc.send_dimse_command(ctx_id, &final_rsp).await
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
