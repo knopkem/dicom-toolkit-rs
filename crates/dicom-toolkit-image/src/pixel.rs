@@ -56,7 +56,11 @@ pub fn mask_i16(pixels: &[i16], bits_stored: u16, high_bit: u16) -> Vec<i16> {
         .map(|&p| {
             let raw = (p >> shift) & mask;
             // Sign-extend: if the stored MSB is set, fill upper bits with 1s.
-            if raw & sign_bit != 0 { raw | !mask } else { raw }
+            if raw & sign_bit != 0 {
+                raw | !mask
+            } else {
+                raw
+            }
         })
         .collect()
 }

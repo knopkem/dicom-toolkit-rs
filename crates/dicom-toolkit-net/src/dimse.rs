@@ -137,9 +137,12 @@ pub fn decode_command_dataset(bytes: &[u8]) -> DcmResult<DataSet> {
     while pos + 8 <= bytes.len() {
         let group = u16::from_le_bytes([bytes[pos], bytes[pos + 1]]);
         let element = u16::from_le_bytes([bytes[pos + 2], bytes[pos + 3]]);
-        let len =
-            u32::from_le_bytes([bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7]])
-                as usize;
+        let len = u32::from_le_bytes([
+            bytes[pos + 4],
+            bytes[pos + 5],
+            bytes[pos + 6],
+            bytes[pos + 7],
+        ]) as usize;
         pos += 8;
 
         if pos + len > bytes.len() {
@@ -309,10 +312,7 @@ mod tests {
         assert_eq!(bytes.len(), 12 + 26);
 
         let decoded = decode_command_dataset(&bytes).unwrap();
-        assert_eq!(
-            decoded.get_string(tags::AFFECTED_SOP_CLASS_UID),
-            Some(uid)
-        );
+        assert_eq!(decoded.get_string(tags::AFFECTED_SOP_CLASS_UID), Some(uid));
     }
 
     #[test]

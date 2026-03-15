@@ -34,12 +34,13 @@ impl Uid {
     ///
     /// # Safety (logical)
     /// The caller must ensure the string is a valid DICOM UID.
-    pub const fn from_static(s: &'static str) -> Self {
+    pub const fn from_static(_s: &'static str) -> Self {
         // Can't validate at const time, but used only for known constants.
         Self(String::new()) // placeholder — see below
     }
 
     /// Internal helper that creates a Uid from a known-valid string at runtime.
+    #[allow(dead_code)]
     pub(crate) fn from_valid(s: String) -> Self {
         Self(s)
     }
@@ -79,7 +80,10 @@ impl Uid {
         }
         if s.len() > MAX_UID_LENGTH {
             return Err(DcmError::InvalidUid {
-                reason: format!("UID exceeds maximum length of {MAX_UID_LENGTH}: got {}", s.len()),
+                reason: format!(
+                    "UID exceeds maximum length of {MAX_UID_LENGTH}: got {}",
+                    s.len()
+                ),
             });
         }
         if s.starts_with('.') || s.ends_with('.') {
@@ -164,10 +168,8 @@ pub mod sop_class {
     pub const ENHANCED_MR_IMAGE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.4.1";
     pub const ULTRASOUND_IMAGE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.6.1";
     pub const SECONDARY_CAPTURE_IMAGE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.7";
-    pub const DIGITAL_XRAY_IMAGE_STORAGE_FOR_PRESENTATION: &str =
-        "1.2.840.10008.5.1.4.1.1.1.1";
-    pub const DIGITAL_XRAY_IMAGE_STORAGE_FOR_PROCESSING: &str =
-        "1.2.840.10008.5.1.4.1.1.1.1.1";
+    pub const DIGITAL_XRAY_IMAGE_STORAGE_FOR_PRESENTATION: &str = "1.2.840.10008.5.1.4.1.1.1.1";
+    pub const DIGITAL_XRAY_IMAGE_STORAGE_FOR_PROCESSING: &str = "1.2.840.10008.5.1.4.1.1.1.1.1";
     pub const DIGITAL_MAMMOGRAPHY_IMAGE_STORAGE_FOR_PRESENTATION: &str =
         "1.2.840.10008.5.1.4.1.1.1.2";
     pub const CR_IMAGE_STORAGE: &str = "1.2.840.10008.5.1.4.1.1.1";

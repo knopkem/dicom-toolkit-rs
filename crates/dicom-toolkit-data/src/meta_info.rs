@@ -2,10 +2,10 @@
 //!
 //! Manages the header present in every DICOM Part 10 file.
 
-use dicom_toolkit_core::error::{DcmError, DcmResult};
-use dicom_toolkit_dict::{Vr, tags};
 use crate::dataset::DataSet;
 use crate::element::Element;
+use dicom_toolkit_core::error::{DcmError, DcmResult};
+use dicom_toolkit_dict::{tags, Vr};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -141,8 +141,14 @@ mod tests {
         let ds = meta.to_dataset();
         let back = FileMetaInformation::from_dataset(&ds).unwrap();
         assert_eq!(meta.transfer_syntax_uid, back.transfer_syntax_uid);
-        assert_eq!(meta.media_storage_sop_class_uid, back.media_storage_sop_class_uid);
-        assert_eq!(meta.media_storage_sop_instance_uid, back.media_storage_sop_instance_uid);
+        assert_eq!(
+            meta.media_storage_sop_class_uid,
+            back.media_storage_sop_class_uid
+        );
+        assert_eq!(
+            meta.media_storage_sop_instance_uid,
+            back.media_storage_sop_instance_uid
+        );
     }
 
     #[test]

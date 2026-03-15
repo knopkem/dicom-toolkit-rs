@@ -4,11 +4,11 @@
 //! The XML format uses `<NativeDicomModel>` as root, with `<DicomAttribute>` for
 //! each element, matching the Native DICOM Model (PS3.19 §A.1).
 
-use dicom_toolkit_dict::{Tag, Vr};
-use dicom_toolkit_core::error::DcmResult;
 use crate::dataset::DataSet;
 use crate::element::Element;
 use crate::value::{PixelData, Value};
+use dicom_toolkit_core::error::DcmResult;
+use dicom_toolkit_dict::Tag;
 
 // ── Serialization ─────────────────────────────────────────────────────────────
 
@@ -56,7 +56,11 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
         Value::Sequence(items) => {
             out.push('\n');
             for (i, item) in items.iter().enumerate() {
-                out.push_str(&format!("{}<Item number=\"{}\">\n", indent(level + 1), i + 1));
+                out.push_str(&format!(
+                    "{}<Item number=\"{}\">\n",
+                    indent(level + 1),
+                    i + 1
+                ));
                 write_dataset(out, item, level + 2)?;
                 out.push_str(&format!("{}</Item>\n", indent(level + 1)));
             }
@@ -88,7 +92,11 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
         }
         Value::PersonNames(names) => {
             for (i, pn) in names.iter().enumerate() {
-                out.push_str(&format!("{}<PersonName number=\"{}\">\n", indent(level + 1), i + 1));
+                out.push_str(&format!(
+                    "{}<PersonName number=\"{}\">\n",
+                    indent(level + 1),
+                    i + 1
+                ));
                 if !pn.alphabetic.is_empty() {
                     out.push_str(&format!(
                         "{}<Alphabetic><FamilyName>{}</FamilyName></Alphabetic>\n",
@@ -147,7 +155,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -155,7 +165,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -163,7 +175,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -171,7 +185,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -179,7 +195,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -187,7 +205,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -195,7 +215,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -203,7 +225,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -211,7 +235,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -219,7 +245,9 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, n) in v.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{}</Value>\n",
-                    indent(level + 1), i + 1, n
+                    indent(level + 1),
+                    i + 1,
+                    n
                 ));
             }
         }
@@ -227,7 +255,10 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             for (i, t) in tags.iter().enumerate() {
                 out.push_str(&format!(
                     "{}<Value number=\"{}\">{:04X}{:04X}</Value>\n",
-                    indent(level + 1), i + 1, t.group, t.element
+                    indent(level + 1),
+                    i + 1,
+                    t.group,
+                    t.element
                 ));
             }
         }
@@ -237,7 +268,8 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
             out.push_str(&format!(
                 "{}<InlineBinary>{}</InlineBinary>\n",
-                indent(level + 1), b64
+                indent(level + 1),
+                b64
             ));
         }
         Value::PixelData(pd) => {
@@ -251,7 +283,8 @@ fn write_element(out: &mut String, tag: &Tag, elem: &Element, level: usize) -> D
             let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
             out.push_str(&format!(
                 "{}<InlineBinary>{}</InlineBinary>\n",
-                indent(level + 1), b64
+                indent(level + 1),
+                b64
             ));
         }
         // Empty handled above
@@ -280,8 +313,14 @@ mod tests {
     fn xml_has_root_element() {
         let ds = DataSet::new();
         let xml = to_xml(&ds).unwrap();
-        assert!(xml.contains("<NativeDicomModel"), "should have NativeDicomModel root");
-        assert!(xml.contains("</NativeDicomModel>"), "should close NativeDicomModel");
+        assert!(
+            xml.contains("<NativeDicomModel"),
+            "should have NativeDicomModel root"
+        );
+        assert!(
+            xml.contains("</NativeDicomModel>"),
+            "should close NativeDicomModel"
+        );
     }
 
     #[test]
@@ -318,7 +357,10 @@ mod tests {
         item.set_string(tags::PATIENT_ID, Vr::LO, "ITEM-1");
         ds.set_sequence(tags::REFERENCED_SOP_SEQUENCE, vec![item]);
         let xml = to_xml(&ds).unwrap();
-        assert!(xml.contains("<Item number=\"1\">"), "should have Item element");
+        assert!(
+            xml.contains("<Item number=\"1\">"),
+            "should have Item element"
+        );
         assert!(xml.contains("</Item>"), "should close Item");
     }
 
@@ -332,7 +374,9 @@ mod tests {
         ds.set_u16(tags::COLUMNS, 256);
         let xml = to_xml(&ds).unwrap();
         // Basic well-formedness: every open tag should have a close
-        assert!(xml.contains("</DicomAttribute>") || xml.contains("/>"),
-            "all attributes should be closed");
+        assert!(
+            xml.contains("</DicomAttribute>") || xml.contains("/>"),
+            "all attributes should be closed"
+        );
     }
 }

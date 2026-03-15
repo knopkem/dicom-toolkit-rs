@@ -2,16 +2,16 @@
 //!
 //! Reads binary DICOM files into a `FileFormat` or raw `DataSet`.
 
-use std::io::Read;
-use dicom_toolkit_core::charset::DicomCharsetDecoder;
-use dicom_toolkit_core::error::{DcmError, DcmResult};
-use dicom_toolkit_dict::{Tag, Vr, tags};
 use crate::dataset::DataSet;
 use crate::element::Element;
-use crate::value::{Value, PixelData, DicomDate, DicomTime, DicomDateTime, PersonName};
 use crate::file_format::FileFormat;
+use crate::io::transfer::{implicit_vr_for_tag, TransferSyntaxProperties};
 use crate::meta_info::FileMetaInformation;
-use crate::io::transfer::{TransferSyntaxProperties, implicit_vr_for_tag};
+use crate::value::{DicomDate, DicomDateTime, DicomTime, PersonName, PixelData, Value};
+use dicom_toolkit_core::charset::DicomCharsetDecoder;
+use dicom_toolkit_core::error::{DcmError, DcmResult};
+use dicom_toolkit_dict::{tags, Tag, Vr};
+use std::io::Read;
 
 /// Streaming DICOM reader.
 pub struct DicomReader<R: Read> {
@@ -41,7 +41,11 @@ impl<R: Read> DicomReader<R> {
             std::borrow::Cow::Borrowed(&data)
         };
         let mut cursor = DicomCursor::new(&actual);
-        cursor.read_dataset_impl(props.is_explicit_vr(), props.is_little_endian(), actual.len())
+        cursor.read_dataset_impl(
+            props.is_explicit_vr(),
+            props.is_little_endian(),
+            actual.len(),
+        )
     }
 }
 
@@ -81,11 +85,7 @@ pub(crate) fn parse_file(data: &[u8]) -> DcmResult<FileFormat> {
         let mut dc = DicomCursor::new(&decompressed);
         dc.read_dataset_impl(true, true, decompressed.len())?
     } else {
-        cursor.read_dataset_impl(
-            props.is_explicit_vr(),
-            props.is_little_endian(),
-            data.len(),
-        )?
+        cursor.read_dataset_impl(props.is_explicit_vr(), props.is_little_endian(), data.len())?
     };
 
     Ok(FileFormat::new(meta, dataset))
@@ -121,7 +121,9 @@ impl<'a> DicomCursor<'a> {
 
     fn read_u8(&mut self) -> DcmResult<u8> {
         if self.pos >= self.data.len() {
-            return Err(DcmError::UnexpectedEof { offset: self.pos as u64 });
+            return Err(DcmError::UnexpectedEof {
+                offset: self.pos as u64,
+            });
         }
         let b = self.data[self.pos];
         self.pos += 1;
@@ -131,7 +133,11 @@ impl<'a> DicomCursor<'a> {
     fn read_u16(&mut self, le: bool) -> DcmResult<u16> {
         let a = self.read_u8()?;
         let b = self.read_u8()?;
-        Ok(if le { u16::from_le_bytes([a, b]) } else { u16::from_be_bytes([a, b]) })
+        Ok(if le {
+            u16::from_le_bytes([a, b])
+        } else {
+            u16::from_be_bytes([a, b])
+        })
     }
 
     fn read_u32(&mut self, le: bool) -> DcmResult<u32> {
@@ -139,12 +145,18 @@ impl<'a> DicomCursor<'a> {
         let b = self.read_u8()?;
         let c = self.read_u8()?;
         let d = self.read_u8()?;
-        Ok(if le { u32::from_le_bytes([a, b, c, d]) } else { u32::from_be_bytes([a, b, c, d]) })
+        Ok(if le {
+            u32::from_le_bytes([a, b, c, d])
+        } else {
+            u32::from_be_bytes([a, b, c, d])
+        })
     }
 
     fn read_bytes(&mut self, n: usize) -> DcmResult<&'a [u8]> {
         if self.pos + n > self.data.len() {
-            return Err(DcmError::UnexpectedEof { offset: self.pos as u64 });
+            return Err(DcmError::UnexpectedEof {
+                offset: self.pos as u64,
+            });
         }
         let slice = &self.data[self.pos..self.pos + n];
         self.pos += n;
@@ -153,14 +165,24 @@ impl<'a> DicomCursor<'a> {
 
     fn peek_tag(&self, le: bool) -> DcmResult<Tag> {
         if self.pos + 4 > self.data.len() {
-            return Err(DcmError::UnexpectedEof { offset: self.pos as u64 });
+            return Err(DcmError::UnexpectedEof {
+                offset: self.pos as u64,
+            });
         }
         let g0 = self.data[self.pos];
         let g1 = self.data[self.pos + 1];
         let e0 = self.data[self.pos + 2];
         let e1 = self.data[self.pos + 3];
-        let group   = if le { u16::from_le_bytes([g0, g1]) } else { u16::from_be_bytes([g0, g1]) };
-        let element = if le { u16::from_le_bytes([e0, e1]) } else { u16::from_be_bytes([e0, e1]) };
+        let group = if le {
+            u16::from_le_bytes([g0, g1])
+        } else {
+            u16::from_be_bytes([g0, g1])
+        };
+        let element = if le {
+            u16::from_le_bytes([e0, e1])
+        } else {
+            u16::from_be_bytes([e0, e1])
+        };
         Ok(Tag::new(group, element))
     }
 
@@ -386,7 +408,12 @@ impl<'a> DicomCursor<'a> {
 
 // ── Value byte parser ─────────────────────────────────────────────────────────
 
-fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecoder) -> DcmResult<Value> {
+fn parse_value_bytes(
+    vr: Vr,
+    bytes: &[u8],
+    le: bool,
+    charset: &DicomCharsetDecoder,
+) -> DcmResult<Value> {
     if bytes.is_empty() {
         return Ok(Value::Empty);
     }
@@ -420,7 +447,7 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if s.is_empty() {
                 return Ok(Value::Empty);
             }
-            let names: Vec<PersonName> = s.split('\\').map(PersonName::from_str).collect();
+            let names: Vec<PersonName> = s.split('\\').map(PersonName::parse).collect();
             Ok(Value::PersonNames(names))
         }
 
@@ -431,7 +458,8 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if s.is_empty() {
                 return Ok(Value::Empty);
             }
-            let res: Result<Vec<_>, _> = s.split('\\')
+            let res: Result<Vec<_>, _> = s
+                .split('\\')
                 .map(|p| DicomDate::from_da_str(p.trim()))
                 .collect();
             res.map(Value::Date)
@@ -442,9 +470,8 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if s.is_empty() {
                 return Ok(Value::Empty);
             }
-            let res: Result<Vec<_>, _> = s.split('\\')
-                .map(|p| DicomTime::from_str(p.trim()))
-                .collect();
+            let res: Result<Vec<_>, _> =
+                s.split('\\').map(|p| DicomTime::parse(p.trim())).collect();
             res.map(Value::Time)
                 .map_err(|_| DcmError::Other("invalid TM value".into()))
         }
@@ -453,8 +480,9 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if s.is_empty() {
                 return Ok(Value::Empty);
             }
-            let res: Result<Vec<_>, _> = s.split('\\')
-                .map(|p| DicomDateTime::from_str(p.trim()))
+            let res: Result<Vec<_>, _> = s
+                .split('\\')
+                .map(|p| DicomDateTime::parse(p.trim()))
                 .collect();
             res.map(Value::DateTime)
                 .map_err(|_| DcmError::Other("invalid DT value".into()))
@@ -464,8 +492,13 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if s.is_empty() {
                 return Ok(Value::Empty);
             }
-            let res: Result<Vec<i64>, _> = s.split('\\')
-                .map(|p| p.trim().parse::<i64>().map_err(|_| DcmError::Other(format!("invalid IS: {p}"))))
+            let res: Result<Vec<i64>, _> = s
+                .split('\\')
+                .map(|p| {
+                    p.trim()
+                        .parse::<i64>()
+                        .map_err(|_| DcmError::Other(format!("invalid IS: {p}")))
+                })
                 .collect();
             res.map(Value::Ints)
         }
@@ -474,18 +507,33 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if s.is_empty() {
                 return Ok(Value::Empty);
             }
-            let res: Result<Vec<f64>, _> = s.split('\\')
-                .map(|p| p.trim().parse::<f64>().map_err(|_| DcmError::Other(format!("invalid DS: {p}"))))
+            let res: Result<Vec<f64>, _> = s
+                .split('\\')
+                .map(|p| {
+                    p.trim()
+                        .parse::<f64>()
+                        .map_err(|_| DcmError::Other(format!("invalid DS: {p}")))
+                })
                 .collect();
             res.map(Value::Decimals)
         }
 
         Vr::US | Vr::OW => {
             if bytes.len() % 2 != 0 {
-                return Err(DcmError::Other(format!("{} value has odd byte length", vr.code())));
+                return Err(DcmError::Other(format!(
+                    "{} value has odd byte length",
+                    vr.code()
+                )));
             }
-            let vals: Vec<u16> = bytes.chunks_exact(2)
-                .map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
+            let vals: Vec<u16> = bytes
+                .chunks_exact(2)
+                .map(|c| {
+                    if le {
+                        u16::from_le_bytes([c[0], c[1]])
+                    } else {
+                        u16::from_be_bytes([c[0], c[1]])
+                    }
+                })
                 .collect();
             Ok(Value::U16(vals))
         }
@@ -493,17 +541,34 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if bytes.len() % 2 != 0 {
                 return Err(DcmError::Other("SS value has odd byte length".into()));
             }
-            let vals: Vec<i16> = bytes.chunks_exact(2)
-                .map(|c| if le { i16::from_le_bytes([c[0], c[1]]) } else { i16::from_be_bytes([c[0], c[1]]) })
+            let vals: Vec<i16> = bytes
+                .chunks_exact(2)
+                .map(|c| {
+                    if le {
+                        i16::from_le_bytes([c[0], c[1]])
+                    } else {
+                        i16::from_be_bytes([c[0], c[1]])
+                    }
+                })
                 .collect();
             Ok(Value::I16(vals))
         }
         Vr::UL | Vr::OL => {
             if bytes.len() % 4 != 0 {
-                return Err(DcmError::Other(format!("{} value length not multiple of 4", vr.code())));
+                return Err(DcmError::Other(format!(
+                    "{} value length not multiple of 4",
+                    vr.code()
+                )));
             }
-            let vals: Vec<u32> = bytes.chunks_exact(4)
-                .map(|c| if le { u32::from_le_bytes([c[0],c[1],c[2],c[3]]) } else { u32::from_be_bytes([c[0],c[1],c[2],c[3]]) })
+            let vals: Vec<u32> = bytes
+                .chunks_exact(4)
+                .map(|c| {
+                    if le {
+                        u32::from_le_bytes([c[0], c[1], c[2], c[3]])
+                    } else {
+                        u32::from_be_bytes([c[0], c[1], c[2], c[3]])
+                    }
+                })
                 .collect();
             Ok(Value::U32(vals))
         }
@@ -511,29 +576,52 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if bytes.len() % 4 != 0 {
                 return Err(DcmError::Other("SL value length not multiple of 4".into()));
             }
-            let vals: Vec<i32> = bytes.chunks_exact(4)
-                .map(|c| if le { i32::from_le_bytes([c[0],c[1],c[2],c[3]]) } else { i32::from_be_bytes([c[0],c[1],c[2],c[3]]) })
+            let vals: Vec<i32> = bytes
+                .chunks_exact(4)
+                .map(|c| {
+                    if le {
+                        i32::from_le_bytes([c[0], c[1], c[2], c[3]])
+                    } else {
+                        i32::from_be_bytes([c[0], c[1], c[2], c[3]])
+                    }
+                })
                 .collect();
             Ok(Value::I32(vals))
         }
         Vr::FL | Vr::OF => {
             if bytes.len() % 4 != 0 {
-                return Err(DcmError::Other(format!("{} value length not multiple of 4", vr.code())));
+                return Err(DcmError::Other(format!(
+                    "{} value length not multiple of 4",
+                    vr.code()
+                )));
             }
-            let vals: Vec<f32> = bytes.chunks_exact(4)
-                .map(|c| if le { f32::from_le_bytes([c[0],c[1],c[2],c[3]]) } else { f32::from_be_bytes([c[0],c[1],c[2],c[3]]) })
+            let vals: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|c| {
+                    if le {
+                        f32::from_le_bytes([c[0], c[1], c[2], c[3]])
+                    } else {
+                        f32::from_be_bytes([c[0], c[1], c[2], c[3]])
+                    }
+                })
                 .collect();
             Ok(Value::F32(vals))
         }
         Vr::FD | Vr::OD => {
             if bytes.len() % 8 != 0 {
-                return Err(DcmError::Other(format!("{} value length not multiple of 8", vr.code())));
+                return Err(DcmError::Other(format!(
+                    "{} value length not multiple of 8",
+                    vr.code()
+                )));
             }
-            let vals: Vec<f64> = bytes.chunks_exact(8)
-                .map(|c| if le {
-                    f64::from_le_bytes([c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]])
-                } else {
-                    f64::from_be_bytes([c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]])
+            let vals: Vec<f64> = bytes
+                .chunks_exact(8)
+                .map(|c| {
+                    if le {
+                        f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
+                    } else {
+                        f64::from_be_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
+                    }
                 })
                 .collect();
             Ok(Value::F64(vals))
@@ -542,24 +630,33 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if bytes.len() % 8 != 0 {
                 return Err(DcmError::Other("SV value length not multiple of 8".into()));
             }
-            let vals: Vec<i64> = bytes.chunks_exact(8)
-                .map(|c| if le {
-                    i64::from_le_bytes([c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]])
-                } else {
-                    i64::from_be_bytes([c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]])
+            let vals: Vec<i64> = bytes
+                .chunks_exact(8)
+                .map(|c| {
+                    if le {
+                        i64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
+                    } else {
+                        i64::from_be_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
+                    }
                 })
                 .collect();
             Ok(Value::I64(vals))
         }
         Vr::UV | Vr::OV => {
             if bytes.len() % 8 != 0 {
-                return Err(DcmError::Other(format!("{} value length not multiple of 8", vr.code())));
+                return Err(DcmError::Other(format!(
+                    "{} value length not multiple of 8",
+                    vr.code()
+                )));
             }
-            let vals: Vec<u64> = bytes.chunks_exact(8)
-                .map(|c| if le {
-                    u64::from_le_bytes([c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]])
-                } else {
-                    u64::from_be_bytes([c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]])
+            let vals: Vec<u64> = bytes
+                .chunks_exact(8)
+                .map(|c| {
+                    if le {
+                        u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
+                    } else {
+                        u64::from_be_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
+                    }
                 })
                 .collect();
             Ok(Value::U64(vals))
@@ -568,10 +665,19 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
             if bytes.len() % 4 != 0 {
                 return Err(DcmError::Other("AT value length not multiple of 4".into()));
             }
-            let tags: Vec<Tag> = bytes.chunks_exact(4)
+            let tags: Vec<Tag> = bytes
+                .chunks_exact(4)
                 .map(|c| {
-                    let g = if le { u16::from_le_bytes([c[0],c[1]]) } else { u16::from_be_bytes([c[0],c[1]]) };
-                    let e = if le { u16::from_le_bytes([c[2],c[3]]) } else { u16::from_be_bytes([c[2],c[3]]) };
+                    let g = if le {
+                        u16::from_le_bytes([c[0], c[1]])
+                    } else {
+                        u16::from_be_bytes([c[0], c[1]])
+                    };
+                    let e = if le {
+                        u16::from_le_bytes([c[2], c[3]])
+                    } else {
+                        u16::from_be_bytes([c[2], c[3]])
+                    };
                     Tag::new(g, e)
                 })
                 .collect();
@@ -584,7 +690,9 @@ fn parse_value_bytes(vr: Vr, bytes: &[u8], le: bool, charset: &DicomCharsetDecod
 
 /// Decode a byte slice using the active charset decoder.
 fn decode_string_with_charset(bytes: &[u8], charset: &DicomCharsetDecoder) -> String {
-    charset.decode(bytes).unwrap_or_else(|_| String::from_utf8_lossy(bytes).into_owned())
+    charset
+        .decode(bytes)
+        .unwrap_or_else(|_| String::from_utf8_lossy(bytes).into_owned())
 }
 
 /// Decode an ASCII-only string (for numeric VRs like DA, TM, IS, DS).
@@ -600,8 +708,8 @@ fn decode_ascii_string(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dicom_toolkit_dict::Vr;
     use crate::value::Value;
+    use dicom_toolkit_dict::Vr;
 
     fn ascii() -> DicomCharsetDecoder {
         DicomCharsetDecoder::default_ascii()

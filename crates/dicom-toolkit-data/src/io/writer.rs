@@ -2,15 +2,15 @@
 //!
 //! Writes a `FileFormat` or `DataSet` to a binary DICOM stream.
 
-use std::io::Write;
-use dicom_toolkit_core::charset::DicomCharsetDecoder;
-use dicom_toolkit_core::error::{DcmError, DcmResult};
-use dicom_toolkit_dict::{Tag, Vr, tags};
 use crate::dataset::DataSet;
 use crate::element::Element;
-use crate::value::{Value, PixelData};
 use crate::file_format::FileFormat;
 use crate::io::transfer::TransferSyntaxProperties;
+use crate::value::{PixelData, Value};
+use dicom_toolkit_core::charset::DicomCharsetDecoder;
+use dicom_toolkit_core::error::{DcmError, DcmResult};
+use dicom_toolkit_dict::{tags, Tag, Vr};
+use std::io::Write;
 
 /// DICOM file writer.
 pub struct DicomWriter<W: Write> {
@@ -99,12 +99,18 @@ pub(crate) fn encode_dataset(ds: &DataSet, explicit: bool, le: bool) -> DcmResul
     encode_dataset_impl(ds, explicit, le, true)
 }
 
-fn encode_dataset_impl(ds: &DataSet, explicit: bool, le: bool, skip_file_meta: bool) -> DcmResult<Vec<u8>> {
+fn encode_dataset_impl(
+    ds: &DataSet,
+    explicit: bool,
+    le: bool,
+    skip_file_meta: bool,
+) -> DcmResult<Vec<u8>> {
     // Determine the charset from the dataset for encoding string values.
     let charset = if let Some(elem) = ds.get(tags::SPECIFIC_CHARACTER_SET) {
         if let Value::Strings(ref terms) = elem.value {
             let charset_value = terms.join("\\");
-            DicomCharsetDecoder::new(&charset_value).unwrap_or_else(|_| DicomCharsetDecoder::default_ascii())
+            DicomCharsetDecoder::new(&charset_value)
+                .unwrap_or_else(|_| DicomCharsetDecoder::default_ascii())
         } else {
             DicomCharsetDecoder::default_ascii()
         }
@@ -125,12 +131,18 @@ fn encode_dataset_impl(ds: &DataSet, explicit: bool, le: bool, skip_file_meta: b
 
 // ── Element encoding ──────────────────────────────────────────────────────────
 
-fn encode_element(elem: &Element, explicit: bool, le: bool, charset: &DicomCharsetDecoder) -> DcmResult<Vec<u8>> {
+fn encode_element(
+    elem: &Element,
+    explicit: bool,
+    le: bool,
+    charset: &DicomCharsetDecoder,
+) -> DcmResult<Vec<u8>> {
     match &elem.value {
         Value::Sequence(items) => encode_sequence_element(elem.tag, items, explicit, le),
-        Value::PixelData(PixelData::Encapsulated { offset_table, fragments }) => {
-            encode_encapsulated_pixel(elem.tag, offset_table, fragments, explicit, le)
-        }
+        Value::PixelData(PixelData::Encapsulated {
+            offset_table,
+            fragments,
+        }) => encode_encapsulated_pixel(elem.tag, offset_table, fragments, explicit, le),
         _ => {
             let value_bytes = encode_value_bytes(&elem.value, elem.vr, le, charset)?;
             let padded = pad_to_even(value_bytes, elem.vr.padding_byte());
@@ -233,9 +245,7 @@ fn encode_encapsulated_pixel(
     write_u32(&mut out, 0xFFFF_FFFF, le);
 
     // Basic Offset Table item (FFFE,E000)
-    let ot_bytes: Vec<u8> = offset_table.iter()
-        .flat_map(|&o| o.to_le_bytes())
-        .collect();
+    let ot_bytes: Vec<u8> = offset_table.iter().flat_map(|&o| o.to_le_bytes()).collect();
     write_u16(&mut out, 0xFFFE, true);
     write_u16(&mut out, 0xE000, true);
     write_u32(&mut out, ot_bytes.len() as u32, true);
@@ -258,7 +268,12 @@ fn encode_encapsulated_pixel(
 
 // ── Value bytes encoding ──────────────────────────────────────────────────────
 
-pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &DicomCharsetDecoder) -> DcmResult<Vec<u8>> {
+pub(crate) fn encode_value_bytes(
+    value: &Value,
+    _vr: Vr,
+    le: bool,
+    charset: &DicomCharsetDecoder,
+) -> DcmResult<Vec<u8>> {
     match value {
         Value::Empty => Ok(Vec::new()),
 
@@ -268,7 +283,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         }
 
         Value::PersonNames(v) => {
-            let joined = v.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("\\");
+            let joined = v
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join("\\");
             charset.encode(&joined).or_else(|_| Ok(joined.into_bytes()))
         }
 
@@ -276,33 +295,51 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         Value::Uid(s) => Ok(s.as_bytes().to_vec()),
 
         // Date/Time/Numeric values are always ASCII
-        Value::Date(v) => {
-            Ok(v.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\\").into_bytes())
-        }
+        Value::Date(v) => Ok(v
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join("\\")
+            .into_bytes()),
 
-        Value::Time(v) => {
-            Ok(v.iter().map(|t| t.to_string()).collect::<Vec<_>>().join("\\").into_bytes())
-        }
+        Value::Time(v) => Ok(v
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join("\\")
+            .into_bytes()),
 
-        Value::DateTime(v) => {
-            Ok(v.iter().map(|dt| dt.to_string()).collect::<Vec<_>>().join("\\").into_bytes())
-        }
+        Value::DateTime(v) => Ok(v
+            .iter()
+            .map(|dt| dt.to_string())
+            .collect::<Vec<_>>()
+            .join("\\")
+            .into_bytes()),
 
-        Value::Ints(v) => {
-            Ok(v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\").into_bytes())
-        }
+        Value::Ints(v) => Ok(v
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join("\\")
+            .into_bytes()),
 
-        Value::Decimals(v) => {
-            Ok(v.iter().map(|n| format_ds(*n)).collect::<Vec<_>>().join("\\").into_bytes())
-        }
+        Value::Decimals(v) => Ok(v
+            .iter()
+            .map(|n| format_ds(*n))
+            .collect::<Vec<_>>()
+            .join("\\")
+            .into_bytes()),
 
         Value::U8(v) => Ok(v.clone()),
 
         Value::U16(v) => {
             let mut buf = Vec::with_capacity(v.len() * 2);
             for &n in v {
-                if le { buf.extend_from_slice(&n.to_le_bytes()); }
-                else   { buf.extend_from_slice(&n.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&n.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&n.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -310,8 +347,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         Value::I16(v) => {
             let mut buf = Vec::with_capacity(v.len() * 2);
             for &n in v {
-                if le { buf.extend_from_slice(&n.to_le_bytes()); }
-                else   { buf.extend_from_slice(&n.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&n.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&n.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -319,8 +359,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         Value::U32(v) => {
             let mut buf = Vec::with_capacity(v.len() * 4);
             for &n in v {
-                if le { buf.extend_from_slice(&n.to_le_bytes()); }
-                else   { buf.extend_from_slice(&n.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&n.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&n.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -328,8 +371,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         Value::I32(v) => {
             let mut buf = Vec::with_capacity(v.len() * 4);
             for &n in v {
-                if le { buf.extend_from_slice(&n.to_le_bytes()); }
-                else   { buf.extend_from_slice(&n.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&n.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&n.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -337,8 +383,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         Value::U64(v) => {
             let mut buf = Vec::with_capacity(v.len() * 8);
             for &n in v {
-                if le { buf.extend_from_slice(&n.to_le_bytes()); }
-                else   { buf.extend_from_slice(&n.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&n.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&n.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -346,8 +395,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
         Value::I64(v) => {
             let mut buf = Vec::with_capacity(v.len() * 8);
             for &n in v {
-                if le { buf.extend_from_slice(&n.to_le_bytes()); }
-                else   { buf.extend_from_slice(&n.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&n.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&n.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -356,8 +408,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
             let mut buf = Vec::with_capacity(v.len() * 4);
             for &n in v {
                 let bits = n.to_bits();
-                if le { buf.extend_from_slice(&bits.to_le_bytes()); }
-                else   { buf.extend_from_slice(&bits.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&bits.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&bits.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -366,8 +421,11 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
             let mut buf = Vec::with_capacity(v.len() * 8);
             for &n in v {
                 let bits = n.to_bits();
-                if le { buf.extend_from_slice(&bits.to_le_bytes()); }
-                else   { buf.extend_from_slice(&bits.to_be_bytes()); }
+                if le {
+                    buf.extend_from_slice(&bits.to_le_bytes());
+                } else {
+                    buf.extend_from_slice(&bits.to_be_bytes());
+                }
             }
             Ok(buf)
         }
@@ -388,9 +446,9 @@ pub(crate) fn encode_value_bytes(value: &Value, _vr: Vr, le: bool, charset: &Dic
 
         Value::PixelData(PixelData::Native { bytes }) => Ok(bytes.clone()),
 
-        Value::Sequence(_) | Value::PixelData(PixelData::Encapsulated { .. }) => {
-            Err(DcmError::Other("encode_value_bytes called on Sequence/Encapsulated".into()))
-        }
+        Value::Sequence(_) | Value::PixelData(PixelData::Encapsulated { .. }) => Err(
+            DcmError::Other("encode_value_bytes called on Sequence/Encapsulated".into()),
+        ),
     }
 }
 
@@ -404,13 +462,19 @@ fn pad_to_even(mut bytes: Vec<u8>, pad: u8) -> Vec<u8> {
 }
 
 fn write_u16(buf: &mut Vec<u8>, v: u16, le: bool) {
-    if le { buf.extend_from_slice(&v.to_le_bytes()); }
-    else   { buf.extend_from_slice(&v.to_be_bytes()); }
+    if le {
+        buf.extend_from_slice(&v.to_le_bytes());
+    } else {
+        buf.extend_from_slice(&v.to_be_bytes());
+    }
 }
 
 fn write_u32(buf: &mut Vec<u8>, v: u32, le: bool) {
-    if le { buf.extend_from_slice(&v.to_le_bytes()); }
-    else   { buf.extend_from_slice(&v.to_be_bytes()); }
+    if le {
+        buf.extend_from_slice(&v.to_le_bytes());
+    } else {
+        buf.extend_from_slice(&v.to_be_bytes());
+    }
 }
 
 /// Format an f64 value as a DICOM DS string (max 16 chars).
@@ -435,8 +499,8 @@ fn format_ds(v: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dicom_toolkit_dict::Vr;
     use crate::value::Value;
+    use dicom_toolkit_dict::Vr;
 
     fn ascii() -> DicomCharsetDecoder {
         DicomCharsetDecoder::default_ascii()

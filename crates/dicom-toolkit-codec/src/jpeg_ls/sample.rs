@@ -4,7 +4,9 @@
 //! replacing the C++ template specializations in CharLS (`LosslessTraitsT`, `DefaultTraitsT`).
 
 /// Trait abstracting a pixel sample type for JPEG-LS encoding/decoding.
-pub trait Sample: Copy + Clone + Default + Into<i32> + std::fmt::Debug + Send + Sync + 'static {
+pub trait Sample:
+    Copy + Clone + Default + Into<i32> + std::fmt::Debug + Send + Sync + 'static
+{
     /// The maximum sample value (e.g. 255 for 8-bit, 65535 for 16-bit).
     const MAX_VAL_DEFAULT: i32;
 

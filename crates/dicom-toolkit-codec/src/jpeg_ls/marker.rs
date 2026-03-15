@@ -107,7 +107,7 @@ pub fn parse_markers(data: &[u8]) -> DcmResult<FrameInfo> {
                 }
 
                 let ns = data[pos + 2]; // Number of components in this scan.
-                // Component spec entries: Ns * 2 bytes at pos+3.
+                                        // Component spec entries: Ns * 2 bytes at pos+3.
                 let near_offset = pos + 3 + (ns as usize * 2);
                 if near_offset + 2 > pos + seg_len {
                     return Err(short_data_err());

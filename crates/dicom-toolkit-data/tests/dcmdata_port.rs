@@ -40,7 +40,11 @@ fn dataset_overwrite_string() {
 #[test]
 fn dataset_multi_string_set() {
     let mut ds = DataSet::new();
-    ds.set_strings(tags::IMAGE_TYPE, Vr::CS, vec!["ORIGINAL".into(), "PRIMARY".into(), "AXIAL".into()]);
+    ds.set_strings(
+        tags::IMAGE_TYPE,
+        Vr::CS,
+        vec!["ORIGINAL".into(), "PRIMARY".into(), "AXIAL".into()],
+    );
     let strings = ds.get_strings(tags::IMAGE_TYPE).unwrap();
     assert_eq!(strings.len(), 3);
     assert_eq!(strings[0], "ORIGINAL");
@@ -69,7 +73,10 @@ fn dataset_insert_multiple_elements_ordered() {
 
     let tags_in_order: Vec<Tag> = ds.tags().collect();
     // Patient name (0010,0010), Rows (0028,0010), Columns (0028,0011)
-    assert!(tags_in_order.windows(2).all(|w| w[0] < w[1]), "tags should be sorted ascending");
+    assert!(
+        tags_in_order.windows(2).all(|w| w[0] < w[1]),
+        "tags should be sorted ascending"
+    );
 }
 
 #[test]
@@ -155,10 +162,14 @@ fn vr_ae_max_16_chars() {
 fn vr_cs_uppercase_only_valid_chars() {
     // CS: uppercase letters, digits, space, underscore only
     let valid = "ORIGINAL";
-    assert!(valid.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == ' ' || c == '_'));
+    assert!(valid
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == ' ' || c == '_'));
 
     let invalid = "lowercase";
-    assert!(!invalid.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == ' ' || c == '_'));
+    assert!(!invalid
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == ' ' || c == '_'));
 }
 
 #[test]
@@ -176,32 +187,38 @@ fn vr_ui_valid_format() {
 fn vr_da_valid_yyyymmdd() {
     use dicom_toolkit_data::DicomDate;
     // Valid DICOM dates: YYYYMMDD
-    assert!(DicomDate::from_str("20230615").is_ok());
-    assert!(DicomDate::from_str("19991231").is_ok());
+    assert!(DicomDate::parse("20230615").is_ok());
+    assert!(DicomDate::parse("19991231").is_ok());
     // Invalid: wrong length
-    assert!(DicomDate::from_str("2023-06-15").is_err());
-    assert!(DicomDate::from_str("202306").is_ok(), "partial date YYYYMM is valid");
-    assert!(DicomDate::from_str("2023").is_ok(), "partial date YYYY is valid");
+    assert!(DicomDate::parse("2023-06-15").is_err());
+    assert!(
+        DicomDate::parse("202306").is_ok(),
+        "partial date YYYYMM is valid"
+    );
+    assert!(
+        DicomDate::parse("2023").is_ok(),
+        "partial date YYYY is valid"
+    );
 }
 
 #[test]
 fn vr_tm_valid_hhmmss() {
     use dicom_toolkit_data::DicomTime;
-    assert!(DicomTime::from_str("120000").is_ok());
-    assert!(DicomTime::from_str("235959").is_ok());
-    assert!(DicomTime::from_str("120000.123456").is_ok());
-    assert!(DicomTime::from_str("1200").is_ok(), "HHMM is valid");
-    assert!(DicomTime::from_str("12").is_ok(), "HH is valid");
+    assert!(DicomTime::parse("120000").is_ok());
+    assert!(DicomTime::parse("235959").is_ok());
+    assert!(DicomTime::parse("120000.123456").is_ok());
+    assert!(DicomTime::parse("1200").is_ok(), "HHMM is valid");
+    assert!(DicomTime::parse("12").is_ok(), "HH is valid");
     // Invalid hour
-    assert!(DicomTime::from_str("250000").is_err());
+    assert!(DicomTime::parse("250000").is_err());
 }
 
 #[test]
 fn vr_dt_valid_datetime() {
     use dicom_toolkit_data::DicomDateTime;
-    assert!(DicomDateTime::from_str("20230615120000.000000+0000").is_ok());
-    assert!(DicomDateTime::from_str("20230615").is_ok());
-    assert!(DicomDateTime::from_str("202306151200").is_ok());
+    assert!(DicomDateTime::parse("20230615120000.000000+0000").is_ok());
+    assert!(DicomDateTime::parse("20230615").is_ok());
+    assert!(DicomDateTime::parse("202306151200").is_ok());
 }
 
 // ── tmatch.cc: DICOM attribute matching ───────────────────────────────────────
@@ -258,14 +275,20 @@ mod matching {
 
     #[test]
     fn wildcard_question_matches_one() {
-        assert!(!wildcard_match("?", "hello world"), "? matches exactly one char");
+        assert!(
+            !wildcard_match("?", "hello world"),
+            "? matches exactly one char"
+        );
         assert!(wildcard_match("?", "x"));
         assert!(!wildcard_match("?", ""));
     }
 
     #[test]
     fn wildcard_combined_patterns() {
-        assert!(wildcard_match("?*", "hello world"), "?* = at least one char");
+        assert!(
+            wildcard_match("?*", "hello world"),
+            "?* = at least one char"
+        );
         assert!(wildcard_match("?ell*??l?", "hello world"));
         assert!(!wildcard_match("?ell***?*?l??", "hello world"));
         assert!(wildcard_match("?ell*?**?l?*", "hello world"));
@@ -274,22 +297,37 @@ mod matching {
     #[test]
     fn wildcard_exact_match() {
         assert!(wildcard_match("Hello world!", "Hello world!"));
-        assert!(!wildcard_match("Hello world!", "hello world!"), "case sensitive");
+        assert!(
+            !wildcard_match("Hello world!", "hello world!"),
+            "case sensitive"
+        );
     }
 
     #[test]
     fn wildcard_literal_star_no_match() {
         // '*' is a wildcard that matches any character sequence (including spaces).
-        assert!(wildcard_match("Hello*world!", "Hello world!"), "* matches a space");
-        assert!(wildcard_match("Hello*world!", "Hello*world!"), "* also matches literal *");
-        assert!(wildcard_match("Hello*world!", "Helloworld!"), "* matches empty sequence");
-        assert!(!wildcard_match("Hello*world!", "Hi world!"), "prefix must match");
+        assert!(
+            wildcard_match("Hello*world!", "Hello world!"),
+            "* matches a space"
+        );
+        assert!(
+            wildcard_match("Hello*world!", "Hello*world!"),
+            "* also matches literal *"
+        );
+        assert!(
+            wildcard_match("Hello*world!", "Helloworld!"),
+            "* matches empty sequence"
+        );
+        assert!(
+            !wildcard_match("Hello*world!", "Hi world!"),
+            "prefix must match"
+        );
     }
 
     /// Date range matching: "" matches all; "-YYYYMMDD" = up to; "YYYYMMDD-" = from; "YYYYMMDD-YYYYMMDD" = range.
     fn date_range_match(query: &str, candidate: &str) -> bool {
         // Parse candidate as DicomDate
-        let cand = match DicomDate::from_str(candidate.trim_end_matches('.').replace('.', "").trim()) {
+        let cand = match DicomDate::parse(candidate.trim_end_matches('.').replace('.', "").trim()) {
             Ok(d) => d,
             // Try legacy dot format
             Err(_) => match DicomDate::from_da_str(candidate) {
@@ -305,12 +343,12 @@ mod matching {
             let from = if parts[0].is_empty() {
                 None
             } else {
-                DicomDate::from_str(parts[0]).ok()
+                DicomDate::parse(parts[0]).ok()
             };
             let to = if parts.len() < 2 || parts[1].is_empty() {
                 None
             } else {
-                DicomDate::from_str(parts[1]).ok()
+                DicomDate::parse(parts[1]).ok()
             };
             match (from, to) {
                 (None, None) => true,
@@ -331,27 +369,54 @@ mod matching {
 
     #[test]
     fn date_up_to_range() {
-        assert!(date_range_match("-20000101", "20000101"), "equal to upper bound");
-        assert!(date_range_match("-20000101", "19990531"), "before upper bound");
-        assert!(!date_range_match("-20000101", "20010101"), "after upper bound");
+        assert!(
+            date_range_match("-20000101", "20000101"),
+            "equal to upper bound"
+        );
+        assert!(
+            date_range_match("-20000101", "19990531"),
+            "before upper bound"
+        );
+        assert!(
+            !date_range_match("-20000101", "20010101"),
+            "after upper bound"
+        );
     }
 
     #[test]
     fn date_from_range() {
-        assert!(date_range_match("20000101-", "20010101"), "after lower bound");
-        assert!(!date_range_match("20000101-", "19991231"), "before lower bound");
+        assert!(
+            date_range_match("20000101-", "20010101"),
+            "after lower bound"
+        );
+        assert!(
+            !date_range_match("20000101-", "19991231"),
+            "before lower bound"
+        );
     }
 
     #[test]
     fn date_explicit_range() {
-        assert!(date_range_match("19990101-20000305", "20000101"), "within range");
-        assert!(!date_range_match("19990101-20000305", "19980107"), "before range");
-        assert!(!date_range_match("19990101-20000305", "20000306"), "after range");
+        assert!(
+            date_range_match("19990101-20000305", "20000101"),
+            "within range"
+        );
+        assert!(
+            !date_range_match("19990101-20000305", "19980107"),
+            "before range"
+        );
+        assert!(
+            !date_range_match("19990101-20000305", "20000306"),
+            "after range"
+        );
     }
 
     #[test]
     fn date_legacy_dot_format_in_query() {
-        assert!(date_range_match("1987.08.02", "19870802"), "legacy dot format");
+        assert!(
+            date_range_match("1987.08.02", "19870802"),
+            "legacy dot format"
+        );
     }
 
     /// UID list matching: query is `\\`-separated list; candidate matches if it appears in list.
@@ -375,9 +440,21 @@ mod matching {
 
     #[test]
     fn uid_list_membership() {
-        assert!(uid_list_match("456.789.10\\123.456.789.10", "123.456.789.10"));
-        assert!(uid_list_match("456.789.10\\123.456.789.10\\456.123.789.10", "123.456.789.10"));
-        assert!(!uid_list_match("456.789.10\\123.456.79.10\\456.123.789.10", "123.456.789.10"), "no match");
+        assert!(uid_list_match(
+            "456.789.10\\123.456.789.10",
+            "123.456.789.10"
+        ));
+        assert!(uid_list_match(
+            "456.789.10\\123.456.789.10\\456.123.789.10",
+            "123.456.789.10"
+        ));
+        assert!(
+            !uid_list_match(
+                "456.789.10\\123.456.79.10\\456.123.789.10",
+                "123.456.789.10"
+            ),
+            "no match"
+        );
     }
 }
 
@@ -426,7 +503,10 @@ fn json_roundtrip_nested_sequences() {
     let items = parsed.get_items(tags::REFERENCED_SOP_SEQUENCE).unwrap();
     assert_eq!(items.len(), 3);
     for (i, item) in items.iter().enumerate() {
-        assert_eq!(item.get_string(tags::PATIENT_ID), Some(format!("ITEM-{i}").as_str()));
+        assert_eq!(
+            item.get_string(tags::PATIENT_ID),
+            Some(format!("ITEM-{i}").as_str())
+        );
         assert_eq!(item.get_u16(tags::ROWS), Some(i as u16 * 128));
     }
 }
@@ -445,8 +525,14 @@ fn xml_well_formed_for_complex_dataset() {
     ds.set_u16(tags::COLUMNS, 256);
 
     let xml_str = xml::to_xml(&ds).unwrap();
-    assert!(xml_str.contains("<NativeDicomModel"), "should have root element");
-    assert!(xml_str.contains("</NativeDicomModel>"), "root must be closed");
+    assert!(
+        xml_str.contains("<NativeDicomModel"),
+        "should have root element"
+    );
+    assert!(
+        xml_str.contains("</NativeDicomModel>"),
+        "root must be closed"
+    );
     assert!(xml_str.contains("256"), "should contain numeric value");
     assert!(xml_str.contains("1.2.3.4.5"), "should contain UID");
 }

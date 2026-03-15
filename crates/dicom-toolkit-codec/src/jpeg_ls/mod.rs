@@ -43,4 +43,3 @@ impl JpegLsCodec {
         encoder::encode_jpeg_ls(pixels, width, height, bits_per_sample, components, near)
     }
 }
-

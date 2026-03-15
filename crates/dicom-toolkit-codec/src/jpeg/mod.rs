@@ -83,7 +83,10 @@ mod tests {
         let width = 8u16;
         let height = 8u16;
         let pixels: Vec<u8> = (0u8..64).collect();
-        let params = JpegParams { quality: 90, ..Default::default() };
+        let params = JpegParams {
+            quality: 90,
+            ..Default::default()
+        };
         let compressed = encode_jpeg(&pixels, width, height, 1, &params).unwrap();
 
         let frame = JpegDecoder::decode_frame(&compressed).unwrap();
@@ -93,4 +96,3 @@ mod tests {
         assert_eq!(frame.pixels.len(), (width as usize) * (height as usize));
     }
 }
-

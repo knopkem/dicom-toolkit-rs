@@ -5,11 +5,11 @@
 //! 2. Read back with correct charset decoding
 //! 3. Round-tripped without data loss
 
-use std::path::PathBuf;
-use dicom_toolkit_data::{DataSet, Element, FileFormat};
 use dicom_toolkit_data::meta_info::FileMetaInformation;
 use dicom_toolkit_data::value::Value;
+use dicom_toolkit_data::{DataSet, Element, FileFormat};
 use dicom_toolkit_dict::{tags, Vr};
+use std::path::PathBuf;
 
 /// Build a minimal DICOM file with a given charset and patient name.
 fn build_dicom_with_charset(charset: &str, patient_name: &str) -> FileFormat {
@@ -21,7 +21,7 @@ fn build_dicom_with_charset(charset: &str, patient_name: &str) -> FileFormat {
     let meta = FileMetaInformation::new(
         "1.2.3.4.5.6.7.8.9",
         "1.2.840.10008.5.1.4.1.1.2", // CT Image Storage
-        "1.2.840.10008.1.2.1",        // Explicit VR Little Endian
+        "1.2.840.10008.1.2.1",       // Explicit VR Little Endian
     );
     FileFormat { meta, dataset: ds }
 }
@@ -71,10 +71,7 @@ fn roundtrip_latin1_special_chars() {
 fn roundtrip_utf8() {
     let ff = build_dicom_with_charset("ISO_IR 192", "田中^太郎");
     let rt = roundtrip(&ff, "utf8_japanese");
-    assert_eq!(
-        rt.dataset.get_string(tags::PATIENT_NAME),
-        Some("田中^太郎")
-    );
+    assert_eq!(rt.dataset.get_string(tags::PATIENT_NAME), Some("田中^太郎"));
 }
 
 #[test]
@@ -170,6 +167,12 @@ fn latin1_bytes_are_not_utf8() {
     // In UTF-8, 'ü' is two bytes 0xC3 0xBC
     let has_latin1_u_umlaut = bytes.windows(1).any(|w| w[0] == 0xFC);
     let has_utf8_u_umlaut = bytes.windows(2).any(|w| w[0] == 0xC3 && w[1] == 0xBC);
-    assert!(has_latin1_u_umlaut, "should contain Latin-1 encoded ü (0xFC)");
-    assert!(!has_utf8_u_umlaut, "should not contain UTF-8 encoded ü (0xC3 0xBC)");
+    assert!(
+        has_latin1_u_umlaut,
+        "should contain Latin-1 encoded ü (0xFC)"
+    );
+    assert!(
+        !has_utf8_u_umlaut,
+        "should not contain UTF-8 encoded ü (0xC3 0xBC)"
+    );
 }

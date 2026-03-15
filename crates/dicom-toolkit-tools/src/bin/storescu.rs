@@ -10,7 +10,9 @@ use clap::Parser;
 
 use dicom_toolkit_data::{DicomWriter, FileFormat};
 use dicom_toolkit_dict::tags;
-use dicom_toolkit_net::{Association, AssociationConfig, PresentationContextRq, StoreRequest, c_store};
+use dicom_toolkit_net::{
+    c_store, Association, AssociationConfig, PresentationContextRq, StoreRequest,
+};
 
 const TS_EXPLICIT_VR_LE: &str = "1.2.840.10008.1.2.1";
 const TS_IMPLICIT_VR_LE: &str = "1.2.840.10008.1.2";
@@ -18,7 +20,7 @@ const TS_IMPLICIT_VR_LE: &str = "1.2.840.10008.1.2";
 #[derive(Parser)]
 #[command(
     name = "storescu",
-    about = "Send DICOM SOP instances to a remote Storage SCP",
+    about = "Send DICOM SOP instances to a remote Storage SCP"
 )]
 struct Args {
     /// SCP hostname or IP address
@@ -60,8 +62,8 @@ async fn main() {
         };
         // Encode dataset in Explicit VR LE for transfer
         let mut dataset_bytes = Vec::new();
-        if let Err(e) = DicomWriter::new(&mut dataset_bytes)
-            .write_dataset(&ff.dataset, TS_EXPLICIT_VR_LE)
+        if let Err(e) =
+            DicomWriter::new(&mut dataset_bytes).write_dataset(&ff.dataset, TS_EXPLICIT_VR_LE)
         {
             eprintln!("Cannot encode {}: {}", path.display(), e);
             process::exit(1);
@@ -120,24 +122,20 @@ async fn main() {
         );
     }
 
-    let mut config = AssociationConfig::default();
-    config.local_ae_title = args.aetitle.clone();
-
-    let mut assoc = match Association::request(
-        &addr,
-        &args.called_ae,
-        &args.aetitle,
-        &contexts,
-        &config,
-    )
-    .await
-    {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("Association failed: {}", e);
-            process::exit(1);
-        }
+    let config = AssociationConfig {
+        local_ae_title: args.aetitle.clone(),
+        ..Default::default()
     };
+
+    let mut assoc =
+        match Association::request(&addr, &args.called_ae, &args.aetitle, &contexts, &config).await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Association failed: {}", e);
+                process::exit(1);
+            }
+        };
 
     // --- Send each file ---
     let mut any_error = false;
@@ -147,7 +145,7 @@ async fn main() {
         let sop_class = ff
             .dataset
             .get_string(tags::SOP_CLASS_UID)
-            .or_else(|| Some(ff.meta.media_storage_sop_class_uid.as_str()))
+            .or(Some(ff.meta.media_storage_sop_class_uid.as_str()))
             .unwrap_or("")
             .trim_end_matches('\0')
             .to_string();
@@ -155,7 +153,7 @@ async fn main() {
         let sop_instance = ff
             .dataset
             .get_string(tags::SOP_INSTANCE_UID)
-            .or_else(|| Some(ff.meta.media_storage_sop_instance_uid.as_str()))
+            .or(Some(ff.meta.media_storage_sop_instance_uid.as_str()))
             .unwrap_or("")
             .trim_end_matches('\0')
             .to_string();
@@ -163,7 +161,11 @@ async fn main() {
         let ctx_id = match sop_class_to_ctx_id.get(&sop_class) {
             Some(&id) => id,
             None => {
-                eprintln!("{}: no presentation context for SOP class {}", path.display(), sop_class);
+                eprintln!(
+                    "{}: no presentation context for SOP class {}",
+                    path.display(),
+                    sop_class
+                );
                 any_error = true;
                 continue;
             }
@@ -200,7 +202,11 @@ async fn main() {
                 println!("{}: OK", path.display());
             }
             Ok(rsp) => {
-                eprintln!("{}: warning: SCP returned status 0x{:04X}", path.display(), rsp.status);
+                eprintln!(
+                    "{}: warning: SCP returned status 0x{:04X}",
+                    path.display(),
+                    rsp.status
+                );
             }
             Err(e) => {
                 eprintln!("{}: C-STORE failed: {}", path.display(), e);

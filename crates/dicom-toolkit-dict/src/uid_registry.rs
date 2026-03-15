@@ -13,9 +13,18 @@ static UID_NAMES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
     let mut map = HashMap::new();
 
     // Transfer Syntaxes
-    map.insert(transfer_syntax::IMPLICIT_VR_LITTLE_ENDIAN, "Implicit VR Little Endian");
-    map.insert(transfer_syntax::EXPLICIT_VR_LITTLE_ENDIAN, "Explicit VR Little Endian");
-    map.insert(transfer_syntax::EXPLICIT_VR_BIG_ENDIAN, "Explicit VR Big Endian");
+    map.insert(
+        transfer_syntax::IMPLICIT_VR_LITTLE_ENDIAN,
+        "Implicit VR Little Endian",
+    );
+    map.insert(
+        transfer_syntax::EXPLICIT_VR_LITTLE_ENDIAN,
+        "Explicit VR Little Endian",
+    );
+    map.insert(
+        transfer_syntax::EXPLICIT_VR_BIG_ENDIAN,
+        "Explicit VR Big Endian",
+    );
     map.insert(
         transfer_syntax::DEFLATED_EXPLICIT_VR_LITTLE_ENDIAN,
         "Deflated Explicit VR Little Endian",
@@ -40,17 +49,26 @@ static UID_NAMES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
     map.insert(sop_class::VERIFICATION, "Verification SOP Class");
     map.insert(sop_class::CT_IMAGE_STORAGE, "CT Image Storage");
     map.insert(sop_class::MR_IMAGE_STORAGE, "MR Image Storage");
-    map.insert(sop_class::ULTRASOUND_IMAGE_STORAGE, "Ultrasound Image Storage");
+    map.insert(
+        sop_class::ULTRASOUND_IMAGE_STORAGE,
+        "Ultrasound Image Storage",
+    );
     map.insert(
         sop_class::SECONDARY_CAPTURE_IMAGE_STORAGE,
         "Secondary Capture Image Storage",
     );
     map.insert(sop_class::CR_IMAGE_STORAGE, "CR Image Storage");
-    map.insert(sop_class::NM_IMAGE_STORAGE, "Nuclear Medicine Image Storage");
+    map.insert(
+        sop_class::NM_IMAGE_STORAGE,
+        "Nuclear Medicine Image Storage",
+    );
     map.insert(sop_class::PET_IMAGE_STORAGE, "PET Image Storage");
     map.insert(sop_class::RT_IMAGE_STORAGE, "RT Image Storage");
     map.insert(sop_class::RT_DOSE_STORAGE, "RT Dose Storage");
-    map.insert(sop_class::RT_STRUCTURE_SET_STORAGE, "RT Structure Set Storage");
+    map.insert(
+        sop_class::RT_STRUCTURE_SET_STORAGE,
+        "RT Structure Set Storage",
+    );
     map.insert(sop_class::RT_PLAN_STORAGE, "RT Plan Storage");
     map.insert(sop_class::PATIENT_ROOT_QR_FIND, "Patient Root Q/R Find");
     map.insert(sop_class::PATIENT_ROOT_QR_MOVE, "Patient Root Q/R Move");
@@ -74,8 +92,14 @@ mod tests {
 
     #[test]
     fn known_uid_lookup() {
-        assert_eq!(uid_name(sop_class::VERIFICATION), Some("Verification SOP Class"));
-        assert_eq!(uid_name(sop_class::CT_IMAGE_STORAGE), Some("CT Image Storage"));
+        assert_eq!(
+            uid_name(sop_class::VERIFICATION),
+            Some("Verification SOP Class")
+        );
+        assert_eq!(
+            uid_name(sop_class::CT_IMAGE_STORAGE),
+            Some("CT Image Storage")
+        );
     }
 
     #[test]

@@ -14,11 +14,7 @@ use crate::dicom_image::DicomImage;
 ///
 /// Grayscale images produce an 8-bit grayscale PNG; color (RGB) images
 /// produce a 24-bit RGB PNG.
-pub fn export_frame_png(
-    image: &DicomImage,
-    frame: u32,
-    path: impl AsRef<Path>,
-) -> DcmResult<()> {
+pub fn export_frame_png(image: &DicomImage, frame: u32, path: impl AsRef<Path>) -> DcmResult<()> {
     let bytes = frame_to_png_bytes(image, frame)?;
     std::fs::write(path, bytes).map_err(DcmError::Io)
 }
@@ -97,7 +93,7 @@ mod tests {
 
     #[test]
     fn export_frame_png_writes_file() {
-        let dir  = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
         let image = tiny_grayscale();
         export_frame_png(&image, 0, &path).unwrap();

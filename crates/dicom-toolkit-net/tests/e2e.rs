@@ -11,19 +11,19 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::Notify;
 
-use dicom_toolkit_data::DataSet;
-use dicom_toolkit_data::io::writer::DicomWriter;
-use dicom_toolkit_data::io::reader::DicomReader;
-use dicom_toolkit_dict::tags;
 use dicom_toolkit_core::uid::sop_class;
+use dicom_toolkit_data::io::reader::DicomReader;
+use dicom_toolkit_data::io::writer::DicomWriter;
+use dicom_toolkit_data::DataSet;
+use dicom_toolkit_dict::tags;
 
 use dicom_toolkit_net::association::Association;
 use dicom_toolkit_net::config::AssociationConfig;
 use dicom_toolkit_net::presentation::PresentationContextRq;
-use dicom_toolkit_net::services::store::{c_store, StoreRequest};
 use dicom_toolkit_net::services::find::{c_find, FindRequest};
 use dicom_toolkit_net::services::get::{c_get, GetRequest};
 use dicom_toolkit_net::services::r#move::{c_move, MoveRequest};
+use dicom_toolkit_net::services::store::{c_store, StoreRequest};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -48,10 +48,18 @@ fn decode_dataset(bytes: &[u8]) -> DataSet {
 /// Build a minimal CT image dataset good enough for DIMSE transmission tests.
 fn make_ct_dataset(sop_instance_uid: &str, patient_name: &str) -> DataSet {
     let mut ds = DataSet::new();
-    ds.set_string(tags::SOP_CLASS_UID,    dicom_toolkit_dict::Vr::UI, sop_class::CT_IMAGE_STORAGE);
-    ds.set_string(tags::SOP_INSTANCE_UID, dicom_toolkit_dict::Vr::UI, sop_instance_uid);
-    ds.set_string(tags::PATIENT_NAME,     dicom_toolkit_dict::Vr::PN, patient_name);
-    ds.set_u16(tags::ROWS,    512);
+    ds.set_string(
+        tags::SOP_CLASS_UID,
+        dicom_toolkit_dict::Vr::UI,
+        sop_class::CT_IMAGE_STORAGE,
+    );
+    ds.set_string(
+        tags::SOP_INSTANCE_UID,
+        dicom_toolkit_dict::Vr::UI,
+        sop_instance_uid,
+    );
+    ds.set_string(tags::PATIENT_NAME, dicom_toolkit_dict::Vr::PN, patient_name);
+    ds.set_u16(tags::ROWS, 512);
     ds.set_u16(tags::COLUMNS, 512);
     ds
 }
@@ -65,10 +73,11 @@ fn make_query_dataset(patient_id: &str) -> DataSet {
 
 /// SCP association config that accepts any presented SOP class / transfer syntax.
 fn open_scp_config(ae_title: &str) -> AssociationConfig {
-    let mut cfg = AssociationConfig::default();
-    cfg.local_ae_title = ae_title.to_string();
-    cfg.accept_all_transfer_syntaxes = true;
-    cfg
+    AssociationConfig {
+        local_ae_title: ae_title.to_string(),
+        accept_all_transfer_syntaxes: true,
+        ..Default::default()
+    }
 }
 
 fn ct_store_context(id: u8) -> PresentationContextRq {
@@ -165,16 +174,20 @@ async fn test_store_loopback() {
     let ctx = ct_store_context(1);
     let mut assoc = Association::request(
         &format!("127.0.0.1:{port}"),
-        "STORESCP", "STORESCU",
-        &[ctx], &scu_cfg,
-    ).await.unwrap();
+        "STORESCP",
+        "STORESCU",
+        &[ctx],
+        &scu_cfg,
+    )
+    .await
+    .unwrap();
 
     let ctx_id = assoc.find_context(sop_class::CT_IMAGE_STORAGE).unwrap().id;
     let ds = make_ct_dataset("1.2.3.4.5.6", "Loopback^Test");
     let dataset_bytes = encode_dataset(&ds);
 
     let req = StoreRequest {
-        sop_class_uid:    sop_class::CT_IMAGE_STORAGE.to_string(),
+        sop_class_uid: sop_class::CT_IMAGE_STORAGE.to_string(),
         sop_instance_uid: "1.2.3.4.5.6".to_string(),
         priority: 0,
         dataset_bytes,
@@ -187,7 +200,7 @@ async fn test_store_loopback() {
     // Verify the SCP received and decoded the dataset correctly.
     let received = rx.recv().await.unwrap();
     assert_eq!(
-        received.get_string(tags::PATIENT_NAME).as_deref(),
+        received.get_string(tags::PATIENT_NAME),
         Some("Loopback^Test"),
         "patient name must round-trip"
     );
@@ -229,11 +242,14 @@ async fn test_find_loopback() {
             let mut result = DataSet::new();
             result.set_string(tags::SOP_INSTANCE_UID, dicom_toolkit_dict::Vr::UI, uid);
             result.set_string(tags::PATIENT_NAME, dicom_toolkit_dict::Vr::PN, name);
-            result.set_string(tags::PATIENT_ID,   dicom_toolkit_dict::Vr::LO, pid);
+            result.set_string(tags::PATIENT_ID, dicom_toolkit_dict::Vr::LO, pid);
             let result_bytes = encode_dataset(&result);
 
             let mut rsp = DataSet::new();
-            rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, sop_class::PATIENT_ROOT_QR_FIND);
+            rsp.set_uid(
+                tags::AFFECTED_SOP_CLASS_UID,
+                sop_class::PATIENT_ROOT_QR_FIND,
+            );
             rsp.set_u16(tags::COMMAND_FIELD, 0x8020);
             rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
             rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0000); // dataset follows
@@ -244,7 +260,10 @@ async fn test_find_loopback() {
 
         // Final C-FIND-RSP (success, no dataset).
         let mut final_rsp = DataSet::new();
-        final_rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, sop_class::PATIENT_ROOT_QR_FIND);
+        final_rsp.set_uid(
+            tags::AFFECTED_SOP_CLASS_UID,
+            sop_class::PATIENT_ROOT_QR_FIND,
+        );
         final_rsp.set_u16(tags::COMMAND_FIELD, 0x8020);
         final_rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
         final_rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101);
@@ -258,19 +277,31 @@ async fn test_find_loopback() {
     let scu_cfg = AssociationConfig::default();
     let mut assoc = Association::request(
         &format!("127.0.0.1:{port}"),
-        "FINDSCP", "FINDSCU",
-        &[qr_find_context(1)], &scu_cfg,
-    ).await.unwrap();
+        "FINDSCP",
+        "FINDSCU",
+        &[qr_find_context(1)],
+        &scu_cfg,
+    )
+    .await
+    .unwrap();
 
-    let ctx_id = assoc.find_context(sop_class::PATIENT_ROOT_QR_FIND).unwrap().id;
+    let ctx_id = assoc
+        .find_context(sop_class::PATIENT_ROOT_QR_FIND)
+        .unwrap()
+        .id;
     let query = encode_dataset(&make_query_dataset(""));
 
-    let results = c_find(&mut assoc, FindRequest {
-        sop_class_uid: sop_class::PATIENT_ROOT_QR_FIND.to_string(),
-        query,
-        context_id: ctx_id,
-        priority: 0,
-    }).await.unwrap();
+    let results = c_find(
+        &mut assoc,
+        FindRequest {
+            sop_class_uid: sop_class::PATIENT_ROOT_QR_FIND.to_string(),
+            query,
+            context_id: ctx_id,
+            priority: 0,
+        },
+    )
+    .await
+    .unwrap();
 
     assoc.release().await.unwrap();
 
@@ -278,10 +309,10 @@ async fn test_find_loopback() {
 
     let r0 = decode_dataset(&results[0]);
     let r1 = decode_dataset(&results[1]);
-    assert_eq!(r0.get_string(tags::PATIENT_NAME).as_deref(), Some("Smith^John"));
-    assert_eq!(r0.get_string(tags::PATIENT_ID).as_deref(),   Some("P001"));
-    assert_eq!(r1.get_string(tags::PATIENT_NAME).as_deref(), Some("Jones^Mary"));
-    assert_eq!(r1.get_string(tags::PATIENT_ID).as_deref(),   Some("P002"));
+    assert_eq!(r0.get_string(tags::PATIENT_NAME), Some("Smith^John"));
+    assert_eq!(r0.get_string(tags::PATIENT_ID), Some("P001"));
+    assert_eq!(r1.get_string(tags::PATIENT_NAME), Some("Jones^Mary"));
+    assert_eq!(r1.get_string(tags::PATIENT_ID), Some("P002"));
 }
 
 // ── Test 3: C-GET loopback ────────────────────────────────────────────────────
@@ -379,20 +410,31 @@ async fn test_get_loopback() {
     let scu_cfg = AssociationConfig::default();
     let mut assoc = Association::request(
         &format!("127.0.0.1:{port}"),
-        "GETSCP", "GETSCU",
+        "GETSCP",
+        "GETSCU",
         &[qr_get_context(1), ct_store_context(3)],
         &scu_cfg,
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
-    let ctx_id = assoc.find_context(sop_class::PATIENT_ROOT_QR_GET).unwrap().id;
+    let ctx_id = assoc
+        .find_context(sop_class::PATIENT_ROOT_QR_GET)
+        .unwrap()
+        .id;
     let query = encode_dataset(&make_query_dataset("P-GET"));
 
-    let result = c_get(&mut assoc, GetRequest {
-        sop_class_uid: sop_class::PATIENT_ROOT_QR_GET.to_string(),
-        query,
-        context_id: ctx_id,
-        priority: 0,
-    }).await.unwrap();
+    let result = c_get(
+        &mut assoc,
+        GetRequest {
+            sop_class_uid: sop_class::PATIENT_ROOT_QR_GET.to_string(),
+            query,
+            context_id: ctx_id,
+            priority: 0,
+        },
+    )
+    .await
+    .unwrap();
 
     assoc.release().await.unwrap();
 
@@ -409,7 +451,7 @@ async fn test_get_loopback() {
 
     let ds0 = decode_dataset(&result.instances[0].dataset);
     let ds1 = decode_dataset(&result.instances[1].dataset);
-    assert_eq!(ds0.get_string(tags::PATIENT_NAME).as_deref(), Some("Get^PatientA"));
+    assert_eq!(ds0.get_string(tags::PATIENT_NAME), Some("Get^PatientA"));
     assert_eq!(ds1.get_u16(tags::ROWS), Some(512));
 }
 
@@ -451,12 +493,20 @@ async fn test_move_loopback() {
                 Ok(c) => c,
                 Err(_) => break,
             };
-            if cmd.get_u16(tags::COMMAND_FIELD) != Some(0x0001) { break; }
+            if cmd.get_u16(tags::COMMAND_FIELD) != Some(0x0001) {
+                break;
+            }
 
-            let sop_class_uid = cmd.get_string(tags::AFFECTED_SOP_CLASS_UID)
-                .unwrap_or_default().trim_end_matches('\0').to_string();
-            let sop_instance_uid = cmd.get_string(tags::AFFECTED_SOP_INSTANCE_UID)
-                .unwrap_or_default().trim_end_matches('\0').to_string();
+            let sop_class_uid = cmd
+                .get_string(tags::AFFECTED_SOP_CLASS_UID)
+                .unwrap_or_default()
+                .trim_end_matches('\0')
+                .to_string();
+            let sop_instance_uid = cmd
+                .get_string(tags::AFFECTED_SOP_INSTANCE_UID)
+                .unwrap_or_default()
+                .trim_end_matches('\0')
+                .to_string();
             let msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
 
             let _data = assoc.recv_dimse_data().await.unwrap();
@@ -487,21 +537,30 @@ async fn test_move_loopback() {
         let (ctx_id, cmd) = assoc.recv_dimse_command().await.unwrap();
         assert_eq!(cmd.get_u16(tags::COMMAND_FIELD), Some(0x0021)); // C-MOVE-RQ
         let move_msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap();
-        let destination = cmd.get_string(tags::MOVE_DESTINATION)
-            .unwrap_or_default().trim().to_string();
+        let destination = cmd
+            .get_string(tags::MOVE_DESTINATION)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         assert_eq!(destination, "STORESCP");
-        let sop_class_uid = cmd.get_string(tags::AFFECTED_SOP_CLASS_UID)
-            .unwrap_or_default().trim_end_matches('\0').to_string();
+        let sop_class_uid = cmd
+            .get_string(tags::AFFECTED_SOP_CLASS_UID)
+            .unwrap_or_default()
+            .trim_end_matches('\0')
+            .to_string();
         let _query = assoc.recv_dimse_data().await.unwrap();
 
         // Sub-associate to Storage SCP and forward both instances.
         let store_cfg = AssociationConfig::default();
         let mut sub = Association::request(
             &format!("127.0.0.1:{store_port}"),
-            "STORESCP", "QRSCP",
+            "STORESCP",
+            "QRSCP",
             &[ct_store_context(1)],
             &store_cfg,
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
 
         let instances: &[(&str, &str, &[u8])] = &[
             (sop_class::CT_IMAGE_STORAGE, "1.2.3.201", &inst1_c),
@@ -512,14 +571,16 @@ async fn test_move_loopback() {
         for (i, (sc, si, data)) in instances.iter().enumerate() {
             let store_ctx = sub.find_context(sc).unwrap().id;
             let req = StoreRequest {
-                sop_class_uid:    sc.to_string(),
+                sop_class_uid: sc.to_string(),
                 sop_instance_uid: si.to_string(),
                 priority: 0,
                 dataset_bytes: data.to_vec(),
                 context_id: store_ctx,
             };
             let store_rsp = c_store(&mut sub, req).await.unwrap();
-            if store_rsp.status == 0x0000 { completed += 1; }
+            if store_rsp.status == 0x0000 {
+                completed += 1;
+            }
 
             let remaining = (instances.len() - 1 - i) as u16;
             let mut move_rsp = DataSet::new();
@@ -556,21 +617,32 @@ async fn test_move_loopback() {
     let scu_cfg = AssociationConfig::default();
     let mut assoc = Association::request(
         &format!("127.0.0.1:{qr_port}"),
-        "QRSCP", "MOVESCU",
+        "QRSCP",
+        "MOVESCU",
         &[qr_move_context(1)],
         &scu_cfg,
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
-    let ctx_id = assoc.find_context(sop_class::PATIENT_ROOT_QR_MOVE).unwrap().id;
+    let ctx_id = assoc
+        .find_context(sop_class::PATIENT_ROOT_QR_MOVE)
+        .unwrap()
+        .id;
     let query = encode_dataset(&make_query_dataset("P-MOVE"));
 
-    let responses = c_move(&mut assoc, MoveRequest {
-        sop_class_uid: sop_class::PATIENT_ROOT_QR_MOVE.to_string(),
-        destination: "STORESCP".to_string(),
-        query,
-        context_id: ctx_id,
-        priority: 0,
-    }).await.unwrap();
+    let responses = c_move(
+        &mut assoc,
+        MoveRequest {
+            sop_class_uid: sop_class::PATIENT_ROOT_QR_MOVE.to_string(),
+            destination: "STORESCP".to_string(),
+            query,
+            context_id: ctx_id,
+            priority: 0,
+        },
+    )
+    .await
+    .unwrap();
 
     assoc.release().await.unwrap();
 

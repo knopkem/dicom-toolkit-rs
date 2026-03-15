@@ -48,13 +48,18 @@ pub async fn c_store(assoc: &mut Association, req: StoreRequest) -> DcmResult<St
     cmd.set_uid(tags::AFFECTED_SOP_INSTANCE_UID, &req.sop_instance_uid);
 
     assoc.send_dimse_command(req.context_id, &cmd).await?;
-    assoc.send_dimse_data(req.context_id, &req.dataset_bytes).await?;
+    assoc
+        .send_dimse_data(req.context_id, &req.dataset_bytes)
+        .await?;
 
     // Receive C-STORE-RSP
     let (_ctx, rsp) = assoc.recv_dimse_command().await?;
     let status = rsp.get_u16(tags::STATUS).unwrap_or(0xFFFF);
 
-    Ok(StoreResponse { status, message_id: msg_id })
+    Ok(StoreResponse {
+        status,
+        message_id: msg_id,
+    })
 }
 
 fn next_message_id() -> u16 {

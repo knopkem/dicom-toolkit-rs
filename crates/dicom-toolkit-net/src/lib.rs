@@ -1,4 +1,5 @@
-//! > ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
+//! ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
+//!
 //! Async DICOM networking: association management, DIMSE services.
 //!
 //! This crate ports DCMTK's `dcmnet` and `dcmtls` modules using `tokio`.
@@ -21,4 +22,3 @@ pub use services::get::{c_get, GetRequest, GetResponse, GetResult, ReceivedInsta
 pub use services::r#move::{c_move, MoveRequest, MoveResponse};
 pub use services::store::{c_store, StoreRequest, StoreResponse};
 pub use tls::{connect_tls, make_acceptor, TlsConfig};
-

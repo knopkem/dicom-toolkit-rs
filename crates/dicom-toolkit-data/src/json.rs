@@ -3,11 +3,11 @@
 //! Ports DCMTK's `dcjson.h` / `dcjsonrd.h`. The DICOM JSON model encodes each
 //! element as `{ "GGGGEEEE": { "vr": "XX", "Value": [...] } }`.
 
-use dicom_toolkit_dict::{Tag, Vr};
-use dicom_toolkit_core::error::{DcmError, DcmResult};
 use crate::dataset::DataSet;
 use crate::element::Element;
 use crate::value::{DicomDate, DicomDateTime, DicomTime, PersonName, PixelData, Value};
+use dicom_toolkit_core::error::{DcmError, DcmResult};
+use dicom_toolkit_dict::{Tag, Vr};
 
 // ── Serialization ─────────────────────────────────────────────────────────────
 
@@ -24,7 +24,9 @@ pub fn to_json_pretty(dataset: &DataSet) -> DcmResult<String> {
         .map_err(|e| DcmError::Other(format!("JSON serialize error: {e}")))
 }
 
-fn dataset_to_json_object(dataset: &DataSet) -> DcmResult<serde_json::Map<String, serde_json::Value>> {
+fn dataset_to_json_object(
+    dataset: &DataSet,
+) -> DcmResult<serde_json::Map<String, serde_json::Value>> {
     let mut map = serde_json::Map::new();
     for (tag, elem) in dataset.iter() {
         // Skip group-length tags and sequence delimiter tags
@@ -49,24 +51,29 @@ fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
                 None
             } else if elem.vr == Vr::PN {
                 // PN strings stored as raw "Last^First^Middle^Prefix^Suffix" — convert to JSON PN format
-                let arr: Vec<serde_json::Value> = v.iter().map(|s| {
-                    let mut obj = serde_json::Map::new();
-                    if !s.is_empty() {
-                        obj.insert("Alphabetic".into(), serde_json::Value::String(s.clone()));
-                    }
-                    serde_json::Value::Object(obj)
-                }).collect();
+                let arr: Vec<serde_json::Value> = v
+                    .iter()
+                    .map(|s| {
+                        let mut obj = serde_json::Map::new();
+                        if !s.is_empty() {
+                            obj.insert("Alphabetic".into(), serde_json::Value::String(s.clone()));
+                        }
+                        serde_json::Value::Object(obj)
+                    })
+                    .collect();
                 Some(serde_json::Value::Array(arr))
             } else {
                 Some(serde_json::Value::Array(
-                    v.iter().map(|s| serde_json::Value::String(s.clone())).collect(),
+                    v.iter()
+                        .map(|s| serde_json::Value::String(s.clone()))
+                        .collect(),
                 ))
             }
         }
 
-        Value::Uid(s) => {
-            Some(serde_json::Value::Array(vec![serde_json::Value::String(s.clone())]))
-        }
+        Value::Uid(s) => Some(serde_json::Value::Array(vec![serde_json::Value::String(
+            s.clone(),
+        )])),
 
         Value::PersonNames(names) => {
             let arr: Vec<serde_json::Value> = names
@@ -102,27 +109,36 @@ fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
         }
 
         Value::Date(dates) => Some(serde_json::Value::Array(
-            dates.iter().map(|d| serde_json::Value::String(d.to_string())).collect(),
+            dates
+                .iter()
+                .map(|d| serde_json::Value::String(d.to_string()))
+                .collect(),
         )),
         Value::Time(times) => Some(serde_json::Value::Array(
-            times.iter().map(|t| serde_json::Value::String(t.to_string())).collect(),
+            times
+                .iter()
+                .map(|t| serde_json::Value::String(t.to_string()))
+                .collect(),
         )),
         Value::DateTime(dts) => Some(serde_json::Value::Array(
-            dts.iter().map(|dt| serde_json::Value::String(dt.to_string())).collect(),
+            dts.iter()
+                .map(|dt| serde_json::Value::String(dt.to_string()))
+                .collect(),
         )),
 
         Value::Ints(v) => Some(serde_json::Value::Array(
             v.iter().map(|n| serde_json::json!(n)).collect(),
         )),
         Value::Decimals(v) => Some(serde_json::Value::Array(
-            v.iter().map(|n| {
-                if n.is_finite() {
-                    serde_json::json!(n)
-                } else {
-                    serde_json::Value::Null
-                }
-            })
-            .collect(),
+            v.iter()
+                .map(|n| {
+                    if n.is_finite() {
+                        serde_json::json!(n)
+                    } else {
+                        serde_json::Value::Null
+                    }
+                })
+                .collect(),
         )),
 
         Value::U16(v) => Some(serde_json::Value::Array(
@@ -144,24 +160,26 @@ fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
             v.iter().map(|n| serde_json::json!(n)).collect(),
         )),
         Value::F32(v) => Some(serde_json::Value::Array(
-            v.iter().map(|n| {
-                if n.is_finite() {
-                    serde_json::json!(n)
-                } else {
-                    serde_json::Value::Null
-                }
-            })
-            .collect(),
+            v.iter()
+                .map(|n| {
+                    if n.is_finite() {
+                        serde_json::json!(n)
+                    } else {
+                        serde_json::Value::Null
+                    }
+                })
+                .collect(),
         )),
         Value::F64(v) => Some(serde_json::Value::Array(
-            v.iter().map(|n| {
-                if n.is_finite() {
-                    serde_json::json!(n)
-                } else {
-                    serde_json::Value::Null
-                }
-            })
-            .collect(),
+            v.iter()
+                .map(|n| {
+                    if n.is_finite() {
+                        serde_json::json!(n)
+                    } else {
+                        serde_json::Value::Null
+                    }
+                })
+                .collect(),
         )),
 
         Value::Tags(tags) => Some(serde_json::Value::Array(
@@ -248,9 +266,9 @@ fn parse_json_tag(key: &str) -> DcmResult<Tag> {
 }
 
 fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element> {
-    let obj = val.as_object().ok_or_else(|| {
-        DcmError::Other(format!("expected JSON object for tag {tag}"))
-    })?;
+    let obj = val
+        .as_object()
+        .ok_or_else(|| DcmError::Other(format!("expected JSON object for tag {tag}")))?;
 
     let vr_str = obj
         .get("vr")
@@ -284,9 +302,9 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
             let items: DcmResult<Vec<DataSet>> = values_arr
                 .iter()
                 .map(|item| {
-                    let item_obj = item.as_object().ok_or_else(|| {
-                        DcmError::Other("SQ item must be a JSON object".into())
-                    })?;
+                    let item_obj = item
+                        .as_object()
+                        .ok_or_else(|| DcmError::Other("SQ item must be a JSON object".into()))?;
                     json_object_to_dataset(item_obj)
                 })
                 .collect();
@@ -298,11 +316,11 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
                 .iter()
                 .map(|pn_val| {
                     if pn_val.is_null() {
-                        return Ok(PersonName::from_str(""));
+                        return Ok(PersonName::parse(""));
                     }
-                    let pn_obj = pn_val.as_object().ok_or_else(|| {
-                        DcmError::Other("PN value must be a JSON object".into())
-                    })?;
+                    let pn_obj = pn_val
+                        .as_object()
+                        .ok_or_else(|| DcmError::Other("PN value must be a JSON object".into()))?;
                     let alphabetic = pn_obj
                         .get("Alphabetic")
                         .and_then(|v| v.as_str())
@@ -318,7 +336,12 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    Ok(PersonName { alphabetic, ideographic, phonetic })                })
+                    Ok(PersonName {
+                        alphabetic,
+                        ideographic,
+                        phonetic,
+                    })
+                })
                 .collect();
             Value::PersonNames(names?)
         }
@@ -327,7 +350,7 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
             let dates: DcmResult<Vec<DicomDate>> = values_arr
                 .iter()
                 .filter_map(|v| v.as_str())
-                .map(DicomDate::from_str)
+                .map(DicomDate::parse)
                 .collect();
             Value::Date(dates?)
         }
@@ -336,7 +359,7 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
             let times: DcmResult<Vec<DicomTime>> = values_arr
                 .iter()
                 .filter_map(|v| v.as_str())
-                .map(DicomTime::from_str)
+                .map(DicomTime::parse)
                 .collect();
             Value::Time(times?)
         }
@@ -345,29 +368,27 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
             let dts: DcmResult<Vec<DicomDateTime>> = values_arr
                 .iter()
                 .filter_map(|v| v.as_str())
-                .map(DicomDateTime::from_str)
+                .map(DicomDateTime::parse)
                 .collect();
             Value::DateTime(dts?)
         }
 
         Vr::UI => {
-            let uid = values_arr.first().and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let uid = values_arr
+                .first()
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             Value::Uid(uid)
         }
 
         Vr::IS => {
-            let ints: Vec<i64> = values_arr
-                .iter()
-                .filter_map(|v| v.as_i64())
-                .collect();
+            let ints: Vec<i64> = values_arr.iter().filter_map(|v| v.as_i64()).collect();
             Value::Ints(ints)
         }
 
         Vr::DS => {
-            let decimals: Vec<f64> = values_arr
-                .iter()
-                .filter_map(|v| v.as_f64())
-                .collect();
+            let decimals: Vec<f64> = values_arr.iter().filter_map(|v| v.as_f64()).collect();
             Value::Decimals(decimals)
         }
 
@@ -404,18 +425,12 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
         }
 
         Vr::UV | Vr::OV => {
-            let vals: Vec<u64> = values_arr
-                .iter()
-                .filter_map(|v| v.as_u64())
-                .collect();
+            let vals: Vec<u64> = values_arr.iter().filter_map(|v| v.as_u64()).collect();
             Value::U64(vals)
         }
 
         Vr::SV => {
-            let vals: Vec<i64> = values_arr
-                .iter()
-                .filter_map(|v| v.as_i64())
-                .collect();
+            let vals: Vec<i64> = values_arr.iter().filter_map(|v| v.as_i64()).collect();
             Value::I64(vals)
         }
 
@@ -428,10 +443,7 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
         }
 
         Vr::FD | Vr::OD => {
-            let vals: Vec<f64> = values_arr
-                .iter()
-                .filter_map(|v| v.as_f64())
-                .collect();
+            let vals: Vec<f64> = values_arr.iter().filter_map(|v| v.as_f64()).collect();
             Value::F64(vals)
         }
 
@@ -489,7 +501,10 @@ mod tests {
         // Should contain our tags as 8-hex-char keys
         assert!(json.contains("00100010"), "should contain PatientName tag");
         assert!(json.contains("00100020"), "should contain PatientID tag");
-        assert!(json.contains("0020000D") || json.contains("00080018"), "should contain UID tag");
+        assert!(
+            json.contains("0020000D") || json.contains("00080018"),
+            "should contain UID tag"
+        );
     }
 
     #[test]
@@ -511,7 +526,10 @@ mod tests {
         let json = to_json(&ds).unwrap();
         let parsed = from_json(&json).unwrap();
 
-        assert_eq!(parsed.get_string(tags::SOP_INSTANCE_UID), Some("1.2.840.10008.5.1.4.1.1.2"));
+        assert_eq!(
+            parsed.get_string(tags::SOP_INSTANCE_UID),
+            Some("1.2.840.10008.5.1.4.1.1.2")
+        );
     }
 
     #[test]

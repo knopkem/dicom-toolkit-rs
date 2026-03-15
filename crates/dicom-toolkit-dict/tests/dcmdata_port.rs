@@ -5,9 +5,9 @@
 //! - dcmdata/tests/txfer.cc (transfer syntax tests)
 //! - dcmdata/tests/tvrcomp.cc (VR comparison tests)
 
-use dicom_toolkit_dict::tag::{Tag, tags, ITEM, ITEM_DELIMITATION, SEQUENCE_DELIMITATION};
-use dicom_toolkit_dict::vr::Vr;
+use dicom_toolkit_dict::tag::{tags, Tag, ITEM, ITEM_DELIMITATION, SEQUENCE_DELIMITATION};
 use dicom_toolkit_dict::ts::transfer_syntaxes;
+use dicom_toolkit_dict::vr::Vr;
 
 // ── Ported from dcmdata/tests/ttag.cc ────────────────────────────────────────
 
@@ -42,10 +42,16 @@ fn tag_display_format() {
 /// Private tag detection (odd group numbers).
 #[test]
 fn tag_private_detection() {
-    assert!(!Tag::new(0x0010, 0x0010).is_private(), "even group = standard");
+    assert!(
+        !Tag::new(0x0010, 0x0010).is_private(),
+        "even group = standard"
+    );
     assert!(Tag::new(0x0011, 0x0010).is_private(), "odd group = private");
     assert!(Tag::new(0x0009, 0x0010).is_private(), "odd group = private");
-    assert!(!Tag::new(0x0008, 0x0010).is_private(), "even group = standard");
+    assert!(
+        !Tag::new(0x0008, 0x0010).is_private(),
+        "even group = standard"
+    );
 }
 
 /// Group length tag detection (element == 0x0000).
@@ -141,7 +147,11 @@ fn transfer_syntax_encapsulated() {
 fn transfer_syntax_all_unique_uids() {
     use std::collections::HashSet;
     let uids: HashSet<&str> = transfer_syntaxes::ALL.iter().map(|ts| ts.uid).collect();
-    assert_eq!(uids.len(), transfer_syntaxes::ALL.len(), "duplicate UIDs in transfer syntax registry");
+    assert_eq!(
+        uids.len(),
+        transfer_syntaxes::ALL.len(),
+        "duplicate UIDs in transfer syntax registry"
+    );
 }
 
 /// Unknown UID returns None.
@@ -157,10 +167,40 @@ fn transfer_syntax_unknown_uid() {
 #[test]
 fn vr_byte_roundtrip_all() {
     let all = [
-        Vr::AE, Vr::AS, Vr::AT, Vr::CS, Vr::DA, Vr::DS, Vr::DT, Vr::FD, Vr::FL,
-        Vr::IS, Vr::LO, Vr::LT, Vr::OB, Vr::OD, Vr::OF, Vr::OL, Vr::OV, Vr::OW,
-        Vr::PN, Vr::SH, Vr::SL, Vr::SQ, Vr::SS, Vr::ST, Vr::SV, Vr::TM, Vr::UC,
-        Vr::UI, Vr::UL, Vr::UN, Vr::UR, Vr::US, Vr::UT, Vr::UV,
+        Vr::AE,
+        Vr::AS,
+        Vr::AT,
+        Vr::CS,
+        Vr::DA,
+        Vr::DS,
+        Vr::DT,
+        Vr::FD,
+        Vr::FL,
+        Vr::IS,
+        Vr::LO,
+        Vr::LT,
+        Vr::OB,
+        Vr::OD,
+        Vr::OF,
+        Vr::OL,
+        Vr::OV,
+        Vr::OW,
+        Vr::PN,
+        Vr::SH,
+        Vr::SL,
+        Vr::SQ,
+        Vr::SS,
+        Vr::ST,
+        Vr::SV,
+        Vr::TM,
+        Vr::UC,
+        Vr::UI,
+        Vr::UL,
+        Vr::UN,
+        Vr::UR,
+        Vr::US,
+        Vr::UT,
+        Vr::UV,
     ];
     for vr in &all {
         let bytes = vr.to_bytes();
@@ -173,13 +213,45 @@ fn vr_byte_roundtrip_all() {
 #[test]
 fn vr_string_classification() {
     // String VRs
-    for vr in [Vr::AE, Vr::AS, Vr::CS, Vr::DA, Vr::DS, Vr::DT, Vr::IS, Vr::LO,
-                Vr::LT, Vr::PN, Vr::SH, Vr::ST, Vr::TM, Vr::UC, Vr::UI, Vr::UR, Vr::UT] {
+    for vr in [
+        Vr::AE,
+        Vr::AS,
+        Vr::CS,
+        Vr::DA,
+        Vr::DS,
+        Vr::DT,
+        Vr::IS,
+        Vr::LO,
+        Vr::LT,
+        Vr::PN,
+        Vr::SH,
+        Vr::ST,
+        Vr::TM,
+        Vr::UC,
+        Vr::UI,
+        Vr::UR,
+        Vr::UT,
+    ] {
         assert!(vr.is_string(), "{vr} should be a string VR");
     }
     // Non-string VRs
-    for vr in [Vr::OB, Vr::OD, Vr::OF, Vr::OL, Vr::OV, Vr::OW, Vr::SQ,
-                Vr::FL, Vr::FD, Vr::SL, Vr::SS, Vr::UL, Vr::US, Vr::UN, Vr::AT] {
+    for vr in [
+        Vr::OB,
+        Vr::OD,
+        Vr::OF,
+        Vr::OL,
+        Vr::OV,
+        Vr::OW,
+        Vr::SQ,
+        Vr::FL,
+        Vr::FD,
+        Vr::SL,
+        Vr::SS,
+        Vr::UL,
+        Vr::US,
+        Vr::UN,
+        Vr::AT,
+    ] {
         assert!(!vr.is_string(), "{vr} should NOT be a string VR");
     }
 }
@@ -188,14 +260,47 @@ fn vr_string_classification() {
 #[test]
 fn vr_long_explicit_length() {
     // These need the extended (4-byte) length field in explicit VR
-    for vr in [Vr::OB, Vr::OD, Vr::OF, Vr::OL, Vr::OV, Vr::OW,
-                Vr::SQ, Vr::UC, Vr::UN, Vr::UR, Vr::UT, Vr::SV, Vr::UV] {
-        assert!(vr.has_long_explicit_length(), "{vr} should have long explicit length");
+    for vr in [
+        Vr::OB,
+        Vr::OD,
+        Vr::OF,
+        Vr::OL,
+        Vr::OV,
+        Vr::OW,
+        Vr::SQ,
+        Vr::UC,
+        Vr::UN,
+        Vr::UR,
+        Vr::UT,
+        Vr::SV,
+        Vr::UV,
+    ] {
+        assert!(
+            vr.has_long_explicit_length(),
+            "{vr} should have long explicit length"
+        );
     }
     // These use the short (2-byte) length field
-    for vr in [Vr::CS, Vr::DA, Vr::DS, Vr::LO, Vr::PN, Vr::SH, Vr::UI,
-                Vr::US, Vr::UL, Vr::SS, Vr::SL, Vr::FL, Vr::FD, Vr::AT] {
-        assert!(!vr.has_long_explicit_length(), "{vr} should NOT have long explicit length");
+    for vr in [
+        Vr::CS,
+        Vr::DA,
+        Vr::DS,
+        Vr::LO,
+        Vr::PN,
+        Vr::SH,
+        Vr::UI,
+        Vr::US,
+        Vr::UL,
+        Vr::SS,
+        Vr::SL,
+        Vr::FL,
+        Vr::FD,
+        Vr::AT,
+    ] {
+        assert!(
+            !vr.has_long_explicit_length(),
+            "{vr} should NOT have long explicit length"
+        );
     }
 }
 

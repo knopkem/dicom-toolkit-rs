@@ -1,7 +1,7 @@
 //! Transfer syntax properties helpers.
 
-use dicom_toolkit_dict::ts::{ByteOrder, PixelEncoding, VrEncoding, transfer_syntaxes};
-use dicom_toolkit_dict::{Tag, Vr, tags};
+use dicom_toolkit_dict::ts::{transfer_syntaxes, ByteOrder, PixelEncoding, VrEncoding};
+use dicom_toolkit_dict::{tags, Tag, Vr};
 
 /// Properties of a transfer syntax relevant to encoding/decoding.
 pub struct TransferSyntaxProperties {

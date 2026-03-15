@@ -160,7 +160,7 @@ impl DimseStatus {
     /// Returns `true` if this status indicates a failure.
     pub fn is_failure(self) -> bool {
         // Failures occupy ranges 0xAxxx, 0xBxxx, 0xCxxx
-        matches!(self.0 >> 12, 0xA | 0xB | 0xC)
+        matches!(self.0 >> 12, 0xA..=0xC)
     }
 
     /// Returns `true` if this status indicates a warning.

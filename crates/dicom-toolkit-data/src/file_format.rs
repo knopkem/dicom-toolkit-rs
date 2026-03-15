@@ -3,10 +3,10 @@
 //! `FileFormat` is the top-level object representing a DICOM Part 10 file:
 //! it bundles the File Meta Information with the dataset.
 
-use std::path::Path;
-use dicom_toolkit_core::error::DcmResult;
 use crate::dataset::DataSet;
 use crate::meta_info::FileMetaInformation;
+use dicom_toolkit_core::error::DcmResult;
+use std::path::Path;
 
 /// A DICOM Part 10 file: File Meta Information + dataset.
 #[derive(Debug, Clone)]
@@ -24,11 +24,7 @@ impl FileFormat {
     ///
     /// Uses Explicit VR Little Endian as the default transfer syntax.
     pub fn from_dataset(sop_class_uid: &str, sop_instance_uid: &str, dataset: DataSet) -> Self {
-        let meta = FileMetaInformation::new(
-            sop_class_uid,
-            sop_instance_uid,
-            "1.2.840.10008.1.2.1",
-        );
+        let meta = FileMetaInformation::new(sop_class_uid, sop_instance_uid, "1.2.840.10008.1.2.1");
         Self { meta, dataset }
     }
 
@@ -63,10 +59,10 @@ impl FileFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dicom_toolkit_dict::{Vr, tags};
     use crate::element::Element;
     use crate::io::reader::DicomReader;
     use crate::io::writer::DicomWriter;
+    use dicom_toolkit_dict::{tags, Vr};
 
     fn make_test_dataset() -> DataSet {
         let mut ds = DataSet::new();
@@ -79,11 +75,7 @@ mod tests {
     #[test]
     fn file_format_roundtrip_explicit_vr_le() {
         let ds = make_test_dataset();
-        let ff = FileFormat::from_dataset(
-            "1.2.840.10008.5.1.4.1.1.2",
-            "1.2.3.4.5",
-            ds.clone(),
-        );
+        let ff = FileFormat::from_dataset("1.2.840.10008.5.1.4.1.1.2", "1.2.3.4.5", ds.clone());
 
         let mut buf = Vec::new();
         DicomWriter::new(&mut buf).write_file(&ff).unwrap();
@@ -91,7 +83,10 @@ mod tests {
         let ff2 = DicomReader::new(buf.as_slice()).read_file().unwrap();
         assert_eq!(ff2.dataset.get_u16(tags::ROWS), Some(512));
         assert_eq!(ff2.dataset.get_u16(tags::COLUMNS), Some(256));
-        assert_eq!(ff2.dataset.get_string(tags::PATIENT_NAME), Some("Smith^John"));
+        assert_eq!(
+            ff2.dataset.get_string(tags::PATIENT_NAME),
+            Some("Smith^John")
+        );
     }
 
     #[test]
@@ -125,7 +120,10 @@ mod tests {
         DicomWriter::new(&mut buf).write_file(&ff).unwrap();
 
         let ff2 = DicomReader::new(buf.as_slice()).read_file().unwrap();
-        let items = ff2.dataset.get_items(tags::REFERENCED_SOP_SEQUENCE).unwrap();
+        let items = ff2
+            .dataset
+            .get_items(tags::REFERENCED_SOP_SEQUENCE)
+            .unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].get_string(tags::PATIENT_ID), Some("PID001"));
     }
@@ -141,7 +139,10 @@ mod tests {
 
         let loaded = FileFormat::open(&path).unwrap();
         assert_eq!(loaded.dataset.get_u16(tags::ROWS), Some(512));
-        assert_eq!(loaded.dataset.get_string(tags::PATIENT_NAME), Some("Smith^John"));
+        assert_eq!(
+            loaded.dataset.get_string(tags::PATIENT_NAME),
+            Some("Smith^John")
+        );
     }
 
     #[test]
@@ -154,21 +155,17 @@ mod tests {
         ff.save_as(&path1, "1.2.840.10008.1.2").unwrap();
 
         let loaded = FileFormat::open(&path1).unwrap();
-        assert_eq!(
-            loaded.meta.transfer_syntax_uid,
-            "1.2.840.10008.1.2"
-        );
+        assert_eq!(loaded.meta.transfer_syntax_uid, "1.2.840.10008.1.2");
     }
 
     #[test]
     fn file_format_meta_generated() {
-        let ff = FileFormat::from_dataset(
-            "1.2.840.10008.5.1.4.1.1.2",
-            "9.8.7.6.5",
-            DataSet::new(),
-        );
+        let ff = FileFormat::from_dataset("1.2.840.10008.5.1.4.1.1.2", "9.8.7.6.5", DataSet::new());
         assert_eq!(ff.meta.transfer_syntax_uid, "1.2.840.10008.1.2.1");
-        assert_eq!(ff.meta.media_storage_sop_class_uid, "1.2.840.10008.5.1.4.1.1.2");
+        assert_eq!(
+            ff.meta.media_storage_sop_class_uid,
+            "1.2.840.10008.5.1.4.1.1.2"
+        );
         assert_eq!(ff.meta.media_storage_sop_instance_uid, "9.8.7.6.5");
     }
 }

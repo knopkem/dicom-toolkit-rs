@@ -56,7 +56,7 @@ pub fn rotate(
 
     let (nr, nc) = match rotation {
         Rotation::None | Rotation::R180 => (r, c),
-        Rotation::R90  | Rotation::R270 => (c, r),
+        Rotation::R90 | Rotation::R270 => (c, r),
     };
 
     let mut out = vec![0u8; nr * nc * ch];
@@ -65,10 +65,10 @@ pub fn rotate(
         for dc in 0..nc {
             // Map destination (dr, dc) back to a source (sr, sc).
             let (sr, sc) = match rotation {
-                Rotation::None  => (dr, dc),
-                Rotation::R90   => (r - 1 - dc, dr),
-                Rotation::R180  => (r - 1 - dr, c - 1 - dc),
-                Rotation::R270  => (dc, c - 1 - dr),
+                Rotation::None => (dr, dc),
+                Rotation::R90 => (r - 1 - dc, dr),
+                Rotation::R180 => (r - 1 - dr, c - 1 - dc),
+                Rotation::R270 => (dc, c - 1 - dr),
             };
             let src = (sr * c + sc) * ch;
             let dst = (dr * nc + dc) * ch;
@@ -85,21 +85,21 @@ pub fn rotate(
 ///
 /// Returns a new buffer with the same dimensions.
 pub fn flip(pixels: &[u8], rows: u32, cols: u32, channels: u8, flip: Flip) -> Vec<u8> {
-    let ch  = channels as usize;
-    let r   = rows as usize;
-    let c   = cols as usize;
+    let ch = channels as usize;
+    let r = rows as usize;
+    let c = cols as usize;
     let mut out = vec![0u8; r * c * ch];
 
     for dr in 0..r {
         for dc in 0..c {
             let (sr, sc) = match flip {
-                Flip::None       => (dr, dc),
+                Flip::None => (dr, dc),
                 Flip::Horizontal => (dr, c - 1 - dc),
-                Flip::Vertical   => (r - 1 - dr, dc),
-                Flip::Both       => (r - 1 - dr, c - 1 - dc),
+                Flip::Vertical => (r - 1 - dr, dc),
+                Flip::Both => (r - 1 - dr, c - 1 - dc),
             };
             let src = (sr * c + sc) * ch;
-            let dst = (dr * c  + dc) * ch;
+            let dst = (dr * c + dc) * ch;
             out[dst..dst + ch].copy_from_slice(&pixels[src..src + ch]);
         }
     }
@@ -121,11 +121,11 @@ pub fn scale_bilinear(
     new_rows: u32,
     new_cols: u32,
 ) -> Vec<u8> {
-    let ch  = channels as usize;
-    let r   = rows    as usize;
-    let c   = cols    as usize;
-    let nr  = new_rows as usize;
-    let nc  = new_cols as usize;
+    let ch = channels as usize;
+    let r = rows as usize;
+    let c = cols as usize;
+    let nr = new_rows as usize;
+    let nc = new_cols as usize;
 
     let scale_r = r as f64 / nr as f64;
     let scale_c = c as f64 / nc as f64;
@@ -155,9 +155,9 @@ pub fn scale_bilinear(
                 let p11 = pixels[(r1 * c + c1) * ch + k] as f64;
 
                 let v = p00 * (1.0 - dr_frac) * (1.0 - dc_frac)
-                      + p01 * (1.0 - dr_frac) * dc_frac
-                      + p10 * dr_frac          * (1.0 - dc_frac)
-                      + p11 * dr_frac          * dc_frac;
+                    + p01 * (1.0 - dr_frac) * dc_frac
+                    + p10 * dr_frac * (1.0 - dc_frac)
+                    + p11 * dr_frac * dc_frac;
 
                 out[dst + k] = v.round().clamp(0.0, 255.0) as u8;
             }

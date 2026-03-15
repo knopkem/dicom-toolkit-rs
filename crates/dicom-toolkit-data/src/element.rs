@@ -2,10 +2,10 @@
 //!
 //! Ports DCMTK's `DcmElement` hierarchy into a single flat struct.
 
-use std::fmt;
-use dicom_toolkit_dict::{Tag, Vr};
 use crate::dataset::DataSet;
 use crate::value::Value;
+use dicom_toolkit_dict::{Tag, Vr};
+use std::fmt;
 
 /// A single DICOM data element.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +29,11 @@ impl Element {
 
     /// Multi-valued string element from a slice.
     pub fn strings(tag: Tag, vr: Vr, values: &[&str]) -> Self {
-        Self::new(tag, vr, Value::Strings(values.iter().map(|s| s.to_string()).collect()))
+        Self::new(
+            tag,
+            vr,
+            Value::Strings(values.iter().map(|s| s.to_string()).collect()),
+        )
     }
 
     pub fn u16(tag: Tag, value: u16) -> Self {
@@ -112,19 +116,23 @@ impl fmt::Display for Element {
         let mult = self.value.multiplicity();
 
         // String VRs use [brackets]; numeric and binary VRs display bare.
-        let value_part = if self.vr.is_string() || matches!(self.vr, Vr::UI | Vr::PN | Vr::DA | Vr::TM | Vr::DT | Vr::AT) {
+        let value_part = if self.vr.is_string()
+            || matches!(self.vr, Vr::UI | Vr::PN | Vr::DA | Vr::TM | Vr::DT | Vr::AT)
+        {
             if display_val.is_empty() {
                 "(no value available)".to_string()
             } else {
                 format!("[{}]", display_val)
             }
-        } else if matches!(self.value, Value::Sequence(_)) {
-            display_val
         } else {
             display_val
         };
 
-        write!(f, "{} {} {} # {}, {}", tag_str, vr_str, value_part, length, mult)
+        write!(
+            f,
+            "{} {} {} # {}, {}",
+            tag_str, vr_str, value_part, length, mult
+        )
     }
 }
 

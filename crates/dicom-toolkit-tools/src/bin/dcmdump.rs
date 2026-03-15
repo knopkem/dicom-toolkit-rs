@@ -7,16 +7,16 @@ use std::process;
 
 use clap::Parser;
 
-use dicom_toolkit_data::{DataSet, Element, FileFormat};
 use dicom_toolkit_data::value::Value;
-use dicom_toolkit_dict::{Vr, tags};
+use dicom_toolkit_data::{DataSet, Element, FileFormat};
+use dicom_toolkit_dict::{tags, Vr};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
 #[command(
     name = "dcmdump",
-    about = "Dump DICOM file contents in human-readable form",
+    about = "Dump DICOM file contents in human-readable form"
 )]
 struct Args {
     /// DICOM file(s) to dump
@@ -184,7 +184,10 @@ fn meta_as_dataset(meta: &dicom_toolkit_data::meta_info::FileMetaInformation) ->
         tags::MEDIA_STORAGE_SOP_INSTANCE_UID,
         &meta.media_storage_sop_instance_uid,
     ));
-    ds.insert(Element::uid(tags::TRANSFER_SYNTAX_UID, &meta.transfer_syntax_uid));
+    ds.insert(Element::uid(
+        tags::TRANSFER_SYNTAX_UID,
+        &meta.transfer_syntax_uid,
+    ));
     ds.insert(Element::uid(
         tags::IMPLEMENTATION_CLASS_UID,
         &meta.implementation_class_uid,

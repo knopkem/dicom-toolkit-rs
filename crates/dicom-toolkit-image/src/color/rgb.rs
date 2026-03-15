@@ -13,7 +13,7 @@ pub fn planar_to_pixel(data: &[u8], n_pixels: usize) -> Vec<u8> {
     let mut out = vec![0u8; n_pixels * 3];
     let plane = n_pixels;
     for i in 0..n_pixels {
-        out[i * 3]     = data.get(i).copied().unwrap_or(0);
+        out[i * 3] = data.get(i).copied().unwrap_or(0);
         out[i * 3 + 1] = data.get(plane + i).copied().unwrap_or(0);
         out[i * 3 + 2] = data.get(2 * plane + i).copied().unwrap_or(0);
     }
@@ -26,8 +26,8 @@ pub fn planar_to_pixel(data: &[u8], n_pixels: usize) -> Vec<u8> {
 pub fn pixel_to_planar(data: &[u8], n_pixels: usize) -> Vec<u8> {
     let mut out = vec![0u8; n_pixels * 3];
     for i in 0..n_pixels {
-        out[i]              = data.get(i * 3).copied().unwrap_or(0);
-        out[n_pixels + i]   = data.get(i * 3 + 1).copied().unwrap_or(0);
+        out[i] = data.get(i * 3).copied().unwrap_or(0);
+        out[n_pixels + i] = data.get(i * 3 + 1).copied().unwrap_or(0);
         out[2 * n_pixels + i] = data.get(i * 3 + 2).copied().unwrap_or(0);
     }
     out

@@ -3,9 +3,9 @@
 //! A thin layer over `tokio::net::TcpStream` that reads and writes PDUs.
 //! Higher-level state management lives in [`crate::association`].
 
-use tokio::net::TcpStream;
-use dicom_toolkit_core::error::DcmResult;
 use crate::pdu::{self, Pdu};
+use dicom_toolkit_core::error::DcmResult;
+use tokio::net::TcpStream;
 
 // ── DulTransport ──────────────────────────────────────────────────────────────
 

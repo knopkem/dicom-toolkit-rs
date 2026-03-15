@@ -26,7 +26,7 @@ pub fn encode_jpeg_ls(
     components: u8,
     near: i32,
 ) -> DcmResult<Vec<u8>> {
-    if bits_per_sample < 2 || bits_per_sample > 16 {
+    if !(2..=16).contains(&bits_per_sample) {
         return Err(DcmError::CompressionError {
             reason: format!("JPEG-LS: unsupported bit depth {bits_per_sample}"),
         });
@@ -76,9 +76,8 @@ pub fn encode_jpeg_ls(
         } else {
             // ILV_NONE: separate scan per component.
             for c in 0..nc {
-                let component_pixels: Vec<i32> = (0..(w * h))
-                    .map(|i| pixel_values[i * nc + c])
-                    .collect();
+                let component_pixels: Vec<i32> =
+                    (0..(w * h)).map(|i| pixel_values[i * nc + c]).collect();
 
                 let mut encoder =
                     ScanEncoder::new(traits, defaults.t1, defaults.t2, defaults.t3, w, h);
@@ -108,8 +107,14 @@ pub fn encode_jpeg_ls(
         }
 
         let effective_h = h * nc;
-        let mut encoder =
-            ScanEncoder::new(traits, defaults.t1, defaults.t2, defaults.t3, w, effective_h);
+        let mut encoder = ScanEncoder::new(
+            traits,
+            defaults.t1,
+            defaults.t2,
+            defaults.t3,
+            w,
+            effective_h,
+        );
         let scan_data = encoder.encode(&line_interleaved)?;
         output.extend_from_slice(&scan_data);
     }
@@ -123,11 +128,7 @@ fn bytes_to_i32(data: &[u8], count: usize, bits_per_sample: u8) -> DcmResult<Vec
     if needs_u16(bits_per_sample) {
         if data.len() < count * 2 {
             return Err(DcmError::CompressionError {
-                reason: format!(
-                    "JPEG-LS: expected {} bytes, got {}",
-                    count * 2,
-                    data.len()
-                ),
+                reason: format!("JPEG-LS: expected {} bytes, got {}", count * 2, data.len()),
             });
         }
         let mut values = Vec::with_capacity(count);
@@ -205,4 +206,3 @@ mod tests {
         assert_eq!(decoded.pixels, pixels);
     }
 }
-

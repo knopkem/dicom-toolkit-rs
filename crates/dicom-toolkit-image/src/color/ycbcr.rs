@@ -23,7 +23,9 @@ pub fn ybr_to_rgb_pixel(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
     let cr = cr as f64 - 128.0;
 
     let r = (y + 1.402 * cr).round().clamp(0.0, 255.0) as u8;
-    let g = (y - 0.344_136 * cb - 0.714_136 * cr).round().clamp(0.0, 255.0) as u8;
+    let g = (y - 0.344_136 * cb - 0.714_136 * cr)
+        .round()
+        .clamp(0.0, 255.0) as u8;
     let b = (y + 1.772 * cb).round().clamp(0.0, 255.0) as u8;
 
     (r, g, b)

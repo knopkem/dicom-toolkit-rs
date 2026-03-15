@@ -51,9 +51,9 @@ fn rle_decode(data: &[u8], rows: u16, cols: u16, bits: u16) -> DcmResult<Vec<u8>
 
     // Read segment offsets (15 × u32 at bytes 4..64)
     let mut offsets = [0u32; 15];
-    for i in 0..15 {
+    for (i, offset) in offsets.iter_mut().enumerate() {
         let base = 4 + i * 4;
-        offsets[i] = u32::from_le_bytes([data[base], data[base+1], data[base+2], data[base+3]]);
+        *offset = u32::from_le_bytes([data[base], data[base + 1], data[base + 2], data[base + 3]]);
     }
 
     // Decode each segment
@@ -89,7 +89,7 @@ fn rle_decode(data: &[u8], rows: u16, cols: u16, bits: u16) -> DcmResult<Vec<u8>
                 let hi = segments[sample * 2][pixel];
                 let lo = segments[sample * 2 + 1][pixel];
                 let out_idx = (pixel * samples + sample) * 2;
-                out[out_idx] = lo;       // little-endian word
+                out[out_idx] = lo; // little-endian word
                 out[out_idx + 1] = hi;
             }
         }
@@ -181,10 +181,10 @@ fn rle_encode(data: &[u8], rows: u16, cols: u16, bits: u16) -> DcmResult<Vec<u8>
 
     // Segment offsets (relative to start of byte stream, i.e., after header offset 0)
     let mut offset = 64u32;
-    for i in 0..num_segments {
+    for (i, seg) in encoded_segments.iter().enumerate() {
         let base = 4 + i * 4;
-        header[base..base+4].copy_from_slice(&offset.to_le_bytes());
-        offset += encoded_segments[i].len() as u32;
+        header[base..base + 4].copy_from_slice(&offset.to_le_bytes());
+        offset += seg.len() as u32;
     }
 
     let mut out = header;
@@ -221,10 +221,7 @@ fn rle_encode_segment(data: &[u8]) -> Vec<u8> {
             let lit_start = i;
             while i < data.len() {
                 let mut next_run = 1;
-                while i + next_run < data.len()
-                    && data[i + next_run] == data[i]
-                    && next_run < 128
-                {
+                while i + next_run < data.len() && data[i + next_run] == data[i] && next_run < 128 {
                     next_run += 1;
                 }
                 if next_run >= 2 {

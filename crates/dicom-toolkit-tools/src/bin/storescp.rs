@@ -17,7 +17,7 @@ use dicom_toolkit_net::{Association, AssociationConfig};
 #[derive(Parser)]
 #[command(
     name = "storescp",
-    about = "Listen for incoming DICOM C-STORE requests and save received files",
+    about = "Listen for incoming DICOM C-STORE requests and save received files"
 )]
 struct Args {
     /// TCP port to listen on
@@ -61,9 +61,11 @@ async fn main() {
     let output_dir = Arc::new(args.output_dir.clone());
     let verbose = args.verbose;
 
-    let mut config = AssociationConfig::default();
-    config.local_ae_title = args.aetitle.clone();
-    config.accept_all_transfer_syntaxes = true;
+    let config = AssociationConfig {
+        local_ae_title: args.aetitle.clone(),
+        accept_all_transfer_syntaxes: true,
+        ..Default::default()
+    };
     // Empty accepted_abstract_syntaxes means accept all SOP classes
     let config = Arc::new(config);
 
@@ -100,7 +102,7 @@ async fn main() {
 
 async fn handle_connection(
     stream: tokio::net::TcpStream,
-    output_dir: &PathBuf,
+    output_dir: &std::path::Path,
     config: &AssociationConfig,
     verbose: bool,
 ) -> DcmResult<u32> {
@@ -138,8 +140,9 @@ async fn handle_connection(
                     .map(|pc| pc.transfer_syntax.trim_end_matches('\0').to_string())
                     .unwrap_or_else(|| "1.2.840.10008.1.2.1".to_string());
 
-                let dataset =
-                    DicomReader::new(data.as_slice()).read_dataset(&ts_uid).unwrap_or_else(|_| {
+                let dataset = DicomReader::new(data.as_slice())
+                    .read_dataset(&ts_uid)
+                    .unwrap_or_else(|_| {
                         // Fall back to empty dataset on decode error
                         DataSet::new()
                     });
@@ -148,7 +151,13 @@ async fn handle_connection(
 
                 let safe_instance = sop_instance
                     .chars()
-                    .map(|c| if c.is_alphanumeric() || c == '.' { c } else { '_' })
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == '.' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
                     .collect::<String>();
                 let filename = format!("{}.dcm", safe_instance);
                 let dest = output_dir.join(&filename);

@@ -156,7 +156,7 @@ fn escape_seq_len(data: &[u8]) -> usize {
     }
     match (data[0], data[1]) {
         (0x24, 0x28) | (0x24, 0x29) => 3, // 4-byte sequences (ESC + 3)
-        _ => 2,                             // 3-byte sequences (ESC + 2)
+        _ => 2,                           // 3-byte sequences (ESC + 2)
     }
 }
 
@@ -337,11 +337,7 @@ impl DicomCharsetDecoder {
         Ok(result)
     }
 
-    fn decode_segment(
-        &self,
-        bytes: &[u8],
-        encoding: &'static Encoding,
-    ) -> DcmResult<String> {
+    fn decode_segment(&self, bytes: &[u8], encoding: &'static Encoding) -> DcmResult<String> {
         if bytes.is_empty() {
             return Ok(String::new());
         }
@@ -459,18 +455,9 @@ mod tests {
         assert_eq!(escape_to_term(&[0x28, 0x42]), Some("ISO 2022 IR 6"));
         assert_eq!(escape_to_term(&[0x2D, 0x41]), Some("ISO 2022 IR 100"));
         assert_eq!(escape_to_term(&[0x24, 0x42]), Some("ISO 2022 IR 87"));
-        assert_eq!(
-            escape_to_term(&[0x24, 0x28, 0x44]),
-            Some("ISO 2022 IR 159")
-        );
-        assert_eq!(
-            escape_to_term(&[0x24, 0x29, 0x43]),
-            Some("ISO 2022 IR 149")
-        );
-        assert_eq!(
-            escape_to_term(&[0x24, 0x29, 0x41]),
-            Some("ISO 2022 IR 58")
-        );
+        assert_eq!(escape_to_term(&[0x24, 0x28, 0x44]), Some("ISO 2022 IR 159"));
+        assert_eq!(escape_to_term(&[0x24, 0x29, 0x43]), Some("ISO 2022 IR 149"));
+        assert_eq!(escape_to_term(&[0x24, 0x29, 0x41]), Some("ISO 2022 IR 58"));
     }
 
     #[test]

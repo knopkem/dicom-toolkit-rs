@@ -150,12 +150,11 @@ impl<'a> BitReader<'a> {
             let val = self.data[self.byte_pos] as u64;
 
             // Check if this is a marker (FF followed by >= 0x80).
-            if val == 0xFF {
-                if self.byte_pos + 1 >= self.data.len()
-                    || (self.data[self.byte_pos + 1] & 0x80) != 0
-                {
-                    return; // Don't read into markers.
-                }
+            if val == 0xFF
+                && (self.byte_pos + 1 >= self.data.len()
+                    || (self.data[self.byte_pos + 1] & 0x80) != 0)
+            {
+                return; // Don't read into markers.
             }
 
             self.cache |= val << (56 - self.valid_bits as u32);
@@ -173,12 +172,10 @@ impl<'a> BitReader<'a> {
 }
 
 fn find_next_ff(data: &[u8], start: usize) -> usize {
-    for i in start..data.len() {
-        if data[i] == 0xFF {
-            return i;
-        }
-    }
-    data.len()
+    data[start..]
+        .iter()
+        .position(|&b| b == 0xFF)
+        .map_or(data.len(), |i| start + i)
 }
 
 // ── BitWriter ─────────────────────────────────────────────────────────────────
@@ -192,6 +189,12 @@ pub struct BitWriter {
     bit_pos: i32,
     /// Whether the last written byte was 0xFF.
     is_ff_written: bool,
+}
+
+impl Default for BitWriter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BitWriter {
@@ -232,7 +235,7 @@ impl BitWriter {
     /// Inner append for lengths 0..31.
     #[inline]
     fn append_short(&mut self, value: i32, length: i32) {
-        debug_assert!(length >= 0 && length < 32);
+        debug_assert!((0..32).contains(&length));
         if length == 0 {
             return;
         }
@@ -283,6 +286,11 @@ impl BitWriter {
         self.output.len()
     }
 
+    /// Whether the writer has no data.
+    pub fn is_empty(&self) -> bool {
+        self.output.is_empty()
+    }
+
     fn flush(&mut self) {
         for _ in 0..4 {
             if self.bit_pos >= 32 {
@@ -327,7 +335,7 @@ mod tests {
         let mut r = BitReader::new(&bytes);
         assert_eq!(r.read_value(3).unwrap(), 0b101);
         assert_eq!(r.read_value(8).unwrap(), 0b11110000);
-        assert_eq!(r.read_bit().unwrap(), true);
+        assert!(r.read_bit().unwrap());
     }
 
     #[test]

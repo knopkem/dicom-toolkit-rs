@@ -38,7 +38,11 @@ struct Args {
     near: i32,
 
     /// Force lossless encoding (NEAR=0)
-    #[arg(long = "encode-lossless", short = 'l', conflicts_with = "near_lossless")]
+    #[arg(
+        long = "encode-lossless",
+        short = 'l',
+        conflicts_with = "near_lossless"
+    )]
     lossless: bool,
 
     /// Force near-lossless encoding with default NEAR=2
@@ -76,7 +80,9 @@ fn main() {
     let rows = ds.get_u16(tags::ROWS).unwrap_or(0);
     let cols = ds.get_u16(tags::COLUMNS).unwrap_or(0);
     let bits_allocated = ds.get_u16(tags::BITS_ALLOCATED).unwrap_or(8) as u8;
-    let bits_stored = ds.get_u16(tags::BITS_STORED).unwrap_or(bits_allocated as u16) as u8;
+    let bits_stored = ds
+        .get_u16(tags::BITS_STORED)
+        .unwrap_or(bits_allocated as u16) as u8;
     let samples_per_pixel = ds.get_u16(tags::SAMPLES_PER_PIXEL).unwrap_or(1) as u8;
 
     if rows == 0 || cols == 0 {
@@ -87,12 +93,7 @@ fn main() {
     if args.verbose {
         eprintln!(
             "Input: {}x{}, {} bit ({} stored), {} component(s), TS: {}",
-            cols,
-            rows,
-            bits_allocated,
-            bits_stored,
-            samples_per_pixel,
-            ff.meta.transfer_syntax_uid
+            cols, rows, bits_allocated, bits_stored, samples_per_pixel, ff.meta.transfer_syntax_uid
         );
     }
 
@@ -151,10 +152,7 @@ fn main() {
     };
 
     if args.verbose {
-        eprintln!(
-            "Uncompressed pixel data: {} bytes",
-            raw_pixels.len()
-        );
+        eprintln!("Uncompressed pixel data: {} bytes", raw_pixels.len());
     }
 
     // Encode with JPEG-LS.
@@ -204,9 +202,11 @@ fn main() {
 
     // Update lossy compression attributes if near-lossless.
     if near > 0 {
-        out_ff
-            .dataset
-            .set_string(tags::LOSSY_IMAGE_COMPRESSION, dicom_toolkit_dict::Vr::CS, "01");
+        out_ff.dataset.set_string(
+            tags::LOSSY_IMAGE_COMPRESSION,
+            dicom_toolkit_dict::Vr::CS,
+            "01",
+        );
     }
 
     // Save.

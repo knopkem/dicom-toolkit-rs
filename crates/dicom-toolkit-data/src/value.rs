@@ -3,10 +3,10 @@
 //! Ports DCMTK's per-VR element classes into a single Rust enum, with dedicated
 //! structs for the richer DICOM scalar types (dates, times, person names).
 
-use std::fmt;
-use dicom_toolkit_dict::Tag;
-use dicom_toolkit_core::error::{DcmError, DcmResult};
 use crate::dataset::DataSet;
+use dicom_toolkit_core::error::{DcmError, DcmResult};
+use dicom_toolkit_dict::Tag;
+use std::fmt;
 
 // ── DicomDate ──────────────────────────────────────────────────────────────────
 
@@ -24,17 +24,25 @@ pub struct DicomDate {
 
 impl DicomDate {
     /// Parse a DICOM DA string: YYYYMMDD, YYYYMM, or YYYY.
-    pub fn from_str(s: &str) -> DcmResult<Self> {
+    pub fn parse(s: &str) -> DcmResult<Self> {
         let s = s.trim();
         match s.len() {
             4 => {
                 let year = parse_u16_str(&s[0..4])?;
-                Ok(Self { year, month: 0, day: 0 })
+                Ok(Self {
+                    year,
+                    month: 0,
+                    day: 0,
+                })
             }
             6 => {
                 let year = parse_u16_str(&s[0..4])?;
                 let month = parse_u8_str(&s[4..6])?;
-                Ok(Self { year, month, day: 0 })
+                Ok(Self {
+                    year,
+                    month,
+                    day: 0,
+                })
             }
             8 => {
                 let year = parse_u16_str(&s[0..4])?;
@@ -49,13 +57,14 @@ impl DicomDate {
     /// Parse a DICOM DA string, also accepting the legacy "YYYY.MM.DD" format.
     pub fn from_da_str(s: &str) -> DcmResult<Self> {
         let s = s.trim();
-        if s.len() == 10 && s.as_bytes().get(4) == Some(&b'.') && s.as_bytes().get(7) == Some(&b'.') {
+        if s.len() == 10 && s.as_bytes().get(4) == Some(&b'.') && s.as_bytes().get(7) == Some(&b'.')
+        {
             let year = parse_u16_str(&s[0..4])?;
             let month = parse_u8_str(&s[5..7])?;
             let day = parse_u8_str(&s[8..10])?;
             return Ok(Self { year, month, day });
         }
-        Self::from_str(s)
+        Self::parse(s)
     }
 }
 
@@ -88,7 +97,7 @@ pub struct DicomTime {
 
 impl DicomTime {
     /// Parse a DICOM TM string.
-    pub fn from_str(s: &str) -> DcmResult<Self> {
+    pub fn parse(s: &str) -> DcmResult<Self> {
         let s = s.trim();
         if s.is_empty() {
             return Err(DcmError::Other("empty DICOM time string".into()));
@@ -112,35 +121,62 @@ impl DicomTime {
             2 => {
                 let hour = parse_u8_str(&time_part[0..2])?;
                 if hour > 23 {
-                    return Err(DcmError::Other(format!("invalid hour in DICOM time: {hour}")));
+                    return Err(DcmError::Other(format!(
+                        "invalid hour in DICOM time: {hour}"
+                    )));
                 }
-                Ok(Self { hour, minute: 0, second: 0, fraction: 0 })
+                Ok(Self {
+                    hour,
+                    minute: 0,
+                    second: 0,
+                    fraction: 0,
+                })
             }
             4 => {
                 let hour = parse_u8_str(&time_part[0..2])?;
                 let minute = parse_u8_str(&time_part[2..4])?;
                 if hour > 23 {
-                    return Err(DcmError::Other(format!("invalid hour in DICOM time: {hour}")));
+                    return Err(DcmError::Other(format!(
+                        "invalid hour in DICOM time: {hour}"
+                    )));
                 }
                 if minute > 59 {
-                    return Err(DcmError::Other(format!("invalid minute in DICOM time: {minute}")));
+                    return Err(DcmError::Other(format!(
+                        "invalid minute in DICOM time: {minute}"
+                    )));
                 }
-                Ok(Self { hour, minute, second: 0, fraction: 0 })
+                Ok(Self {
+                    hour,
+                    minute,
+                    second: 0,
+                    fraction: 0,
+                })
             }
             6 => {
                 let hour = parse_u8_str(&time_part[0..2])?;
                 let minute = parse_u8_str(&time_part[2..4])?;
                 let second = parse_u8_str(&time_part[4..6])?;
                 if hour > 23 {
-                    return Err(DcmError::Other(format!("invalid hour in DICOM time: {hour}")));
+                    return Err(DcmError::Other(format!(
+                        "invalid hour in DICOM time: {hour}"
+                    )));
                 }
                 if minute > 59 {
-                    return Err(DcmError::Other(format!("invalid minute in DICOM time: {minute}")));
+                    return Err(DcmError::Other(format!(
+                        "invalid minute in DICOM time: {minute}"
+                    )));
                 }
                 if second > 59 {
-                    return Err(DcmError::Other(format!("invalid second in DICOM time: {second}")));
+                    return Err(DcmError::Other(format!(
+                        "invalid second in DICOM time: {second}"
+                    )));
                 }
-                Ok(Self { hour, minute, second, fraction })
+                Ok(Self {
+                    hour,
+                    minute,
+                    second,
+                    fraction,
+                })
             }
             _ => Err(DcmError::Other(format!("invalid DICOM time: {:?}", s))),
         }
@@ -170,7 +206,7 @@ pub struct DicomDateTime {
 
 impl DicomDateTime {
     /// Parse a DICOM DT string.
-    pub fn from_str(s: &str) -> DcmResult<Self> {
+    pub fn parse(s: &str) -> DcmResult<Self> {
         let s = s.trim();
         if s.len() < 4 {
             return Err(DcmError::Other(format!("invalid DICOM datetime: {:?}", s)));
@@ -184,15 +220,19 @@ impl DicomDateTime {
         let date_len = dt_part.len().min(8);
         let date_str = &dt_part[..date_len];
         // Pad date string to at least 4 chars
-        let date = DicomDate::from_str(date_str)?;
+        let date = DicomDate::parse(date_str)?;
 
         let time = if dt_part.len() > 8 {
-            Some(DicomTime::from_str(&dt_part[8..])?)
+            Some(DicomTime::parse(&dt_part[8..])?)
         } else {
             None
         };
 
-        Ok(Self { date, time, offset_minutes })
+        Ok(Self {
+            date,
+            time,
+            offset_minutes,
+        })
     }
 }
 
@@ -247,7 +287,7 @@ pub struct PersonName {
 
 impl PersonName {
     /// Parse a DICOM PN string.
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         let mut parts = s.splitn(3, '=');
         PersonName {
             alphabetic: parts.next().unwrap_or("").to_string(),
@@ -285,7 +325,11 @@ impl fmt::Display for PersonName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Emit only as many groups as are non-empty, trimming trailing empty groups.
         if !self.phonetic.is_empty() {
-            write!(f, "{}={}={}", self.alphabetic, self.ideographic, self.phonetic)
+            write!(
+                f,
+                "{}={}={}",
+                self.alphabetic, self.ideographic, self.phonetic
+            )
         } else if !self.ideographic.is_empty() {
             write!(f, "{}={}", self.alphabetic, self.ideographic)
         } else {
@@ -452,25 +496,87 @@ impl Value {
         match self {
             Value::Empty => String::new(),
             Value::Strings(v) => v.join("\\"),
-            Value::PersonNames(v) => v.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("\\"),
+            Value::PersonNames(v) => v
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
             Value::Uid(s) => s.clone(),
-            Value::Date(v) => v.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::Time(v) => v.iter().map(|t| t.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::DateTime(v) => v.iter().map(|dt| dt.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::Ints(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::Decimals(v) => v.iter().map(|n| format_f64(*n)).collect::<Vec<_>>().join("\\"),
+            Value::Date(v) => v
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::Time(v) => v
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::DateTime(v) => v
+                .iter()
+                .map(|dt| dt.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::Ints(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::Decimals(v) => v
+                .iter()
+                .map(|n| format_f64(*n))
+                .collect::<Vec<_>>()
+                .join("\\"),
             Value::U8(v) => format!("({} bytes)", v.len()),
-            Value::U16(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::I16(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::U32(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::I32(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::U64(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::I64(v) => v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join("\\"),
-            Value::F32(v) => v.iter().map(|n| format!("{}", n)).collect::<Vec<_>>().join("\\"),
-            Value::F64(v) => v.iter().map(|n| format_f64(*n)).collect::<Vec<_>>().join("\\"),
-            Value::Tags(v) => v.iter().map(|t| format!("({:04X},{:04X})", t.group, t.element)).collect::<Vec<_>>().join("\\"),
+            Value::U16(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::I16(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::U32(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::I32(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::U64(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::I64(v) => v
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::F32(v) => v
+                .iter()
+                .map(|n| format!("{}", n))
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::F64(v) => v
+                .iter()
+                .map(|n| format_f64(*n))
+                .collect::<Vec<_>>()
+                .join("\\"),
+            Value::Tags(v) => v
+                .iter()
+                .map(|t| format!("({:04X},{:04X})", t.group, t.element))
+                .collect::<Vec<_>>()
+                .join("\\"),
             Value::Sequence(v) => format!("(Sequence with {} item(s))", v.len()),
-            Value::PixelData(PixelData::Native { bytes }) => format!("(PixelData, {} bytes)", bytes.len()),
+            Value::PixelData(PixelData::Native { bytes }) => {
+                format!("(PixelData, {} bytes)", bytes.len())
+            }
             Value::PixelData(PixelData::Encapsulated { fragments, .. }) => {
                 format!("(PixelData, {} fragment(s))", fragments.len())
             }
@@ -493,8 +599,12 @@ impl Value {
             Value::Date(v) => v.len() * 8,
             Value::Time(v) => v.len() * 14,
             Value::DateTime(v) => v.len() * 26,
-            Value::Ints(v) => v.iter().map(|n| n.to_string().len()).sum::<usize>() + v.len().saturating_sub(1),
-            Value::Decimals(v) => v.iter().map(|n| format_f64(*n).len()).sum::<usize>() + v.len().saturating_sub(1),
+            Value::Ints(v) => {
+                v.iter().map(|n| n.to_string().len()).sum::<usize>() + v.len().saturating_sub(1)
+            }
+            Value::Decimals(v) => {
+                v.iter().map(|n| format_f64(*n).len()).sum::<usize>() + v.len().saturating_sub(1)
+            }
             Value::U8(v) => v.len(),
             Value::U16(v) => v.len() * 2,
             Value::I16(v) => v.len() * 2,
@@ -517,15 +627,18 @@ impl Value {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn parse_u8_str(s: &str) -> DcmResult<u8> {
-    s.parse::<u8>().map_err(|_| DcmError::Other(format!("expected u8, got {:?}", s)))
+    s.parse::<u8>()
+        .map_err(|_| DcmError::Other(format!("expected u8, got {:?}", s)))
 }
 
 fn parse_u16_str(s: &str) -> DcmResult<u16> {
-    s.parse::<u16>().map_err(|_| DcmError::Other(format!("expected u16, got {:?}", s)))
+    s.parse::<u16>()
+        .map_err(|_| DcmError::Other(format!("expected u16, got {:?}", s)))
 }
 
 fn parse_u32_str(s: &str) -> DcmResult<u32> {
-    s.parse::<u32>().map_err(|_| DcmError::Other(format!("expected u32, got {:?}", s)))
+    s.parse::<u32>()
+        .map_err(|_| DcmError::Other(format!("expected u32, got {:?}", s)))
 }
 
 /// Format an f64 without trailing zeros but with at least one decimal place.
@@ -547,7 +660,7 @@ mod tests {
 
     #[test]
     fn date_full_parse() {
-        let d = DicomDate::from_str("20231215").unwrap();
+        let d = DicomDate::parse("20231215").unwrap();
         assert_eq!(d.year, 2023);
         assert_eq!(d.month, 12);
         assert_eq!(d.day, 15);
@@ -555,7 +668,7 @@ mod tests {
 
     #[test]
     fn date_year_only() {
-        let d = DicomDate::from_str("2023").unwrap();
+        let d = DicomDate::parse("2023").unwrap();
         assert_eq!(d.year, 2023);
         assert_eq!(d.month, 0);
         assert_eq!(d.day, 0);
@@ -563,7 +676,7 @@ mod tests {
 
     #[test]
     fn date_year_month() {
-        let d = DicomDate::from_str("202312").unwrap();
+        let d = DicomDate::parse("202312").unwrap();
         assert_eq!(d.year, 2023);
         assert_eq!(d.month, 12);
         assert_eq!(d.day, 0);
@@ -571,19 +684,31 @@ mod tests {
 
     #[test]
     fn date_display_full() {
-        let d = DicomDate { year: 2023, month: 12, day: 15 };
+        let d = DicomDate {
+            year: 2023,
+            month: 12,
+            day: 15,
+        };
         assert_eq!(d.to_string(), "20231215");
     }
 
     #[test]
     fn date_display_partial_year() {
-        let d = DicomDate { year: 2023, month: 0, day: 0 };
+        let d = DicomDate {
+            year: 2023,
+            month: 0,
+            day: 0,
+        };
         assert_eq!(d.to_string(), "2023");
     }
 
     #[test]
     fn date_display_partial_year_month() {
-        let d = DicomDate { year: 2023, month: 12, day: 0 };
+        let d = DicomDate {
+            year: 2023,
+            month: 12,
+            day: 0,
+        };
         assert_eq!(d.to_string(), "202312");
     }
 
@@ -597,16 +722,16 @@ mod tests {
 
     #[test]
     fn date_invalid() {
-        assert!(DicomDate::from_str("20231").is_err());
-        assert!(DicomDate::from_str("2023121").is_err());
-        assert!(DicomDate::from_str("abcdefgh").is_err());
+        assert!(DicomDate::parse("20231").is_err());
+        assert!(DicomDate::parse("2023121").is_err());
+        assert!(DicomDate::parse("abcdefgh").is_err());
     }
 
     // ── DicomTime ───────────────────────────────────────────────────────
 
     #[test]
     fn time_full_parse() {
-        let t = DicomTime::from_str("143022.500000").unwrap();
+        let t = DicomTime::parse("143022.500000").unwrap();
         assert_eq!(t.hour, 14);
         assert_eq!(t.minute, 30);
         assert_eq!(t.second, 22);
@@ -615,7 +740,7 @@ mod tests {
 
     #[test]
     fn time_partial_hour() {
-        let t = DicomTime::from_str("14").unwrap();
+        let t = DicomTime::parse("14").unwrap();
         assert_eq!(t.hour, 14);
         assert_eq!(t.minute, 0);
         assert_eq!(t.second, 0);
@@ -624,7 +749,7 @@ mod tests {
 
     #[test]
     fn time_partial_hour_minute() {
-        let t = DicomTime::from_str("1430").unwrap();
+        let t = DicomTime::parse("1430").unwrap();
         assert_eq!(t.hour, 14);
         assert_eq!(t.minute, 30);
         assert_eq!(t.second, 0);
@@ -632,7 +757,7 @@ mod tests {
 
     #[test]
     fn time_partial_no_fraction() {
-        let t = DicomTime::from_str("143022").unwrap();
+        let t = DicomTime::parse("143022").unwrap();
         assert_eq!(t.hour, 14);
         assert_eq!(t.minute, 30);
         assert_eq!(t.second, 22);
@@ -642,19 +767,29 @@ mod tests {
     #[test]
     fn time_fraction_short() {
         // Short fraction is zero-padded on the right
-        let t = DicomTime::from_str("143022.5").unwrap();
+        let t = DicomTime::parse("143022.5").unwrap();
         assert_eq!(t.fraction, 500000);
     }
 
     #[test]
     fn time_display() {
-        let t = DicomTime { hour: 14, minute: 30, second: 22, fraction: 500000 };
+        let t = DicomTime {
+            hour: 14,
+            minute: 30,
+            second: 22,
+            fraction: 500000,
+        };
         assert_eq!(t.to_string(), "143022.500000");
     }
 
     #[test]
     fn time_display_no_fraction() {
-        let t = DicomTime { hour: 14, minute: 30, second: 22, fraction: 0 };
+        let t = DicomTime {
+            hour: 14,
+            minute: 30,
+            second: 22,
+            fraction: 0,
+        };
         assert_eq!(t.to_string(), "143022");
     }
 
@@ -662,7 +797,7 @@ mod tests {
 
     #[test]
     fn datetime_full_parse() {
-        let dt = DicomDateTime::from_str("20231215143022.000000+0530").unwrap();
+        let dt = DicomDateTime::parse("20231215143022.000000+0530").unwrap();
         assert_eq!(dt.date.year, 2023);
         assert_eq!(dt.date.month, 12);
         assert_eq!(dt.date.day, 15);
@@ -675,13 +810,13 @@ mod tests {
 
     #[test]
     fn datetime_negative_offset() {
-        let dt = DicomDateTime::from_str("20231215143022.000000-0500").unwrap();
+        let dt = DicomDateTime::parse("20231215143022.000000-0500").unwrap();
         assert_eq!(dt.offset_minutes, Some(-300));
     }
 
     #[test]
     fn datetime_no_time() {
-        let dt = DicomDateTime::from_str("20231215").unwrap();
+        let dt = DicomDateTime::parse("20231215").unwrap();
         assert_eq!(dt.date.year, 2023);
         assert!(dt.time.is_none());
         assert!(dt.offset_minutes.is_none());
@@ -691,7 +826,7 @@ mod tests {
     fn datetime_display_roundtrip() {
         // Use non-zero fraction so Display includes it, enabling exact round-trip.
         let s = "20231215143022.500000+0530";
-        let dt = DicomDateTime::from_str(s).unwrap();
+        let dt = DicomDateTime::parse(s).unwrap();
         assert_eq!(dt.to_string(), s);
     }
 
@@ -699,7 +834,7 @@ mod tests {
     fn datetime_display_roundtrip_no_fraction() {
         // Without a fractional second the display omits the decimal.
         let s = "20231215143022+0530";
-        let dt = DicomDateTime::from_str(s).unwrap();
+        let dt = DicomDateTime::parse(s).unwrap();
         assert_eq!(dt.to_string(), s);
     }
 
@@ -707,7 +842,7 @@ mod tests {
 
     #[test]
     fn pn_simple() {
-        let pn = PersonName::from_str("Eichelberg^Marco^^Dr.");
+        let pn = PersonName::parse("Eichelberg^Marco^^Dr.");
         assert_eq!(pn.last_name(), "Eichelberg");
         assert_eq!(pn.first_name(), "Marco");
         assert_eq!(pn.middle_name(), "");
@@ -717,7 +852,7 @@ mod tests {
 
     #[test]
     fn pn_multi_component() {
-        let pn = PersonName::from_str("Smith^John=\u{5C71}\u{7530}^\u{592A}\u{90CE}=\u{3084}\u{307E}\u{3060}^\u{305F}\u{308D}\u{3046}");
+        let pn = PersonName::parse("Smith^John=\u{5C71}\u{7530}^\u{592A}\u{90CE}=\u{3084}\u{307E}\u{3060}^\u{305F}\u{308D}\u{3046}");
         assert_eq!(pn.last_name(), "Smith");
         assert_eq!(pn.first_name(), "John");
         assert!(!pn.ideographic.is_empty());
@@ -726,13 +861,13 @@ mod tests {
 
     #[test]
     fn pn_display_single_group() {
-        let pn = PersonName::from_str("Smith^John");
+        let pn = PersonName::parse("Smith^John");
         assert_eq!(pn.to_string(), "Smith^John");
     }
 
     #[test]
     fn pn_display_two_groups() {
-        let pn = PersonName::from_str("Smith^John=SJ");
+        let pn = PersonName::parse("Smith^John=SJ");
         assert_eq!(pn.to_string(), "Smith^John=SJ");
     }
 
@@ -741,7 +876,10 @@ mod tests {
     #[test]
     fn value_multiplicity() {
         assert_eq!(Value::Empty.multiplicity(), 0);
-        assert_eq!(Value::Strings(vec!["a".into(), "b".into()]).multiplicity(), 2);
+        assert_eq!(
+            Value::Strings(vec!["a".into(), "b".into()]).multiplicity(),
+            2
+        );
         assert_eq!(Value::U16(vec![1, 2, 3]).multiplicity(), 3);
         assert_eq!(Value::Uid("1.2.3".into()).multiplicity(), 1);
         assert_eq!(Value::Sequence(vec![]).multiplicity(), 0);

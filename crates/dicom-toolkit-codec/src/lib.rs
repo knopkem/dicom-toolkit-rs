@@ -1,4 +1,5 @@
-//! > ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
+//! ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
+//!
 //! DICOM image compression codecs: JPEG, JPEG-LS, RLE, and codec registry.
 //!
 //! This crate ports DCMTK's `dcmjpeg` and `dcmjpls` modules.

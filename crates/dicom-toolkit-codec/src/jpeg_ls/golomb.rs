@@ -58,7 +58,12 @@ pub fn encode_mapped_value(writer: &mut BitWriter, k: i32, mapped_err: i32, limi
 /// * `k` — Golomb parameter
 /// * `limit` — max unary length
 /// * `qbpp` — bits for escape code
-pub fn decode_mapped_value(reader: &mut BitReader, k: i32, limit: i32, qbpp: i32) -> DcmResult<i32> {
+pub fn decode_mapped_value(
+    reader: &mut BitReader,
+    k: i32,
+    limit: i32,
+    qbpp: i32,
+) -> DcmResult<i32> {
     let high_bits = reader.read_highbits()?;
 
     if high_bits >= limit - qbpp - 1 {

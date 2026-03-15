@@ -29,10 +29,7 @@ pub async fn c_echo(assoc: &mut Association, context_id: u8) -> DcmResult<()> {
     if status != 0x0000 {
         return Err(DcmError::DimseError {
             status,
-            description: format!(
-                "C-ECHO failed with status 0x{:04X}",
-                status
-            ),
+            description: format!("C-ECHO failed with status 0x{:04X}", status),
         });
     }
     Ok(())
@@ -53,8 +50,8 @@ fn next_message_id() -> u16 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dicom_toolkit_data::DataSet;
     use crate::dimse;
+    use dicom_toolkit_data::DataSet;
 
     #[test]
     fn echo_rq_command_fields() {

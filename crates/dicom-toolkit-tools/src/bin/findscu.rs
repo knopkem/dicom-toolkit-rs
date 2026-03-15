@@ -7,10 +7,12 @@ use std::process;
 use clap::Parser;
 
 use dicom_toolkit_core::error::DcmResult;
-use dicom_toolkit_data::{DataSet, DicomReader, DicomWriter};
 use dicom_toolkit_data::value::Value;
-use dicom_toolkit_dict::{Vr, tags};
-use dicom_toolkit_net::{Association, AssociationConfig, FindRequest, PresentationContextRq, c_find};
+use dicom_toolkit_data::{DataSet, DicomReader, DicomWriter};
+use dicom_toolkit_dict::{tags, Vr};
+use dicom_toolkit_net::{
+    c_find, Association, AssociationConfig, FindRequest, PresentationContextRq,
+};
 
 // Study Root Query/Retrieve - FIND SOP class
 const STUDY_ROOT_FIND: &str = "1.2.840.10008.5.1.4.1.2.2.1";
@@ -23,7 +25,7 @@ const TS_IMPLICIT_VR_LE: &str = "1.2.840.10008.1.2";
 #[derive(Parser)]
 #[command(
     name = "findscu",
-    about = "Send a DICOM C-FIND query to a remote Query/Retrieve SCP",
+    about = "Send a DICOM C-FIND query to a remote Query/Retrieve SCP"
 )]
 struct Args {
     /// SCP hostname or IP address
@@ -85,39 +87,29 @@ async fn main() {
         PresentationContextRq {
             id: 1,
             abstract_syntax: STUDY_ROOT_FIND.to_string(),
-            transfer_syntaxes: vec![
-                TS_EXPLICIT_VR_LE.to_string(),
-                TS_IMPLICIT_VR_LE.to_string(),
-            ],
+            transfer_syntaxes: vec![TS_EXPLICIT_VR_LE.to_string(), TS_IMPLICIT_VR_LE.to_string()],
         },
         PresentationContextRq {
             id: 3,
             abstract_syntax: PATIENT_ROOT_FIND.to_string(),
-            transfer_syntaxes: vec![
-                TS_EXPLICIT_VR_LE.to_string(),
-                TS_IMPLICIT_VR_LE.to_string(),
-            ],
+            transfer_syntaxes: vec![TS_EXPLICIT_VR_LE.to_string(), TS_IMPLICIT_VR_LE.to_string()],
         },
     ];
 
-    let mut config = AssociationConfig::default();
-    config.local_ae_title = args.aetitle.clone();
-
-    let mut assoc = match Association::request(
-        &addr,
-        &args.called_ae,
-        &args.aetitle,
-        &contexts,
-        &config,
-    )
-    .await
-    {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("Association failed: {}", e);
-            process::exit(1);
-        }
+    let config = AssociationConfig {
+        local_ae_title: args.aetitle.clone(),
+        ..Default::default()
     };
+
+    let mut assoc =
+        match Association::request(&addr, &args.called_ae, &args.aetitle, &contexts, &config).await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Association failed: {}", e);
+                process::exit(1);
+            }
+        };
 
     // Prefer Study Root; fall back to Patient Root
     let ctx_id = match assoc
@@ -194,7 +186,7 @@ fn build_query(keys: &[String], level: &str) -> DcmResult<DataSet> {
             (kv.trim(), "")
         };
 
-        let tag = parse_tag(tag_str).map_err(|e| dicom_toolkit_core::error::DcmError::Other(e))?;
+        let tag = parse_tag(tag_str).map_err(dicom_toolkit_core::error::DcmError::Other)?;
         // Use a generic string VR — the SCP will interpret based on the tag
         ds.set_string(tag, Vr::LO, value);
     }
@@ -207,10 +199,10 @@ fn parse_tag(s: &str) -> Result<dicom_toolkit_dict::Tag, String> {
     let s = s.trim_matches(|c| c == '(' || c == ')');
     let clean: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
     if clean.len() == 8 {
-        let group = u16::from_str_radix(&clean[..4], 16)
-            .map_err(|_| format!("invalid tag: {}", s))?;
-        let element = u16::from_str_radix(&clean[4..], 16)
-            .map_err(|_| format!("invalid tag: {}", s))?;
+        let group =
+            u16::from_str_radix(&clean[..4], 16).map_err(|_| format!("invalid tag: {}", s))?;
+        let element =
+            u16::from_str_radix(&clean[4..], 16).map_err(|_| format!("invalid tag: {}", s))?;
         Ok(dicom_toolkit_dict::Tag::new(group, element))
     } else {
         Err(format!("invalid tag format: {}", s))

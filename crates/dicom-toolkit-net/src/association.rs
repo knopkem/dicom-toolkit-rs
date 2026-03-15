@@ -14,11 +14,11 @@ use dicom_toolkit_data::DataSet;
 
 use crate::config::AssociationConfig;
 use crate::dimse;
-use crate::presentation::{PcResult, PresentationContextAc, PresentationContextRq};
 use crate::pdu::{
-    self, AAbort, AssociateAc, AssociateRq, Pdv,
-    PresentationContextAcItem, PresentationContextRqItem, Pdu,
+    self, AAbort, AssociateAc, AssociateRq, Pdu, Pdv, PresentationContextAcItem,
+    PresentationContextRqItem,
 };
+use crate::presentation::{PcResult, PresentationContextAc, PresentationContextRq};
 
 // ── Well-known transfer syntax UIDs ──────────────────────────────────────────
 
@@ -98,7 +98,9 @@ impl Association {
             pdu::read_pdu(&mut stream),
         )
         .await
-        .map_err(|_| DcmError::Timeout { seconds: config.dimse_timeout_secs })??;
+        .map_err(|_| DcmError::Timeout {
+            seconds: config.dimse_timeout_secs,
+        })??;
 
         match response {
             Pdu::AssociateAc(ac) => {
@@ -157,7 +159,9 @@ impl Association {
             pdu::read_pdu(&mut stream),
         )
         .await
-        .map_err(|_| DcmError::Timeout { seconds: config.dimse_timeout_secs })??;
+        .map_err(|_| DcmError::Timeout {
+            seconds: config.dimse_timeout_secs,
+        })??;
 
         let rq = match incoming {
             Pdu::AssociateRq(rq) => rq,
@@ -276,18 +280,12 @@ impl Association {
         self.ensure_established()?;
 
         loop {
-            let pdu =
-                pdu::read_pdu(&mut self.stream).await?;
+            let pdu = pdu::read_pdu(&mut self.stream).await?;
 
             match pdu {
                 Pdu::PDataTf(pd) => {
                     if let Some(pdv) = pd.pdvs.into_iter().next() {
-                        return Ok((
-                            pdv.context_id,
-                            pdv.is_command(),
-                            pdv.is_last(),
-                            pdv.data,
-                        ));
+                        return Ok((pdv.context_id, pdv.is_command(), pdv.is_last(), pdv.data));
                     }
                     // empty P-DATA-TF — keep waiting
                 }
@@ -300,14 +298,9 @@ impl Association {
                 }
                 Pdu::ReleaseRq => {
                     // Respond with A-RELEASE-RP then close
-                    let _ = self
-                        .stream
-                        .write_all(&pdu::encode_release_rp())
-                        .await;
+                    let _ = self.stream.write_all(&pdu::encode_release_rp()).await;
                     self.state = AssociationState::Closed;
-                    return Err(DcmError::Other(
-                        "association released by peer".into(),
-                    ));
+                    return Err(DcmError::Other("association released by peer".into()));
                 }
                 _ => {} // ignore other unexpected PDUs
             }
@@ -322,16 +315,10 @@ impl Association {
             return Ok(());
         }
         self.state = AssociationState::ReleaseRequested;
-        self.stream
-            .write_all(&pdu::encode_release_rq())
-            .await?;
+        self.stream.write_all(&pdu::encode_release_rq()).await?;
 
         // Wait for A-RELEASE-RP with a short timeout
-        let result = timeout(
-            Duration::from_secs(30),
-            pdu::read_pdu(&mut self.stream),
-        )
-        .await;
+        let result = timeout(Duration::from_secs(30), pdu::read_pdu(&mut self.stream)).await;
 
         self.state = AssociationState::Closed;
 
@@ -346,7 +333,10 @@ impl Association {
     pub async fn abort(&mut self) -> DcmResult<()> {
         let _ = self
             .stream
-            .write_all(&pdu::encode_a_abort(&AAbort { source: 0, reason: 0 }))
+            .write_all(&pdu::encode_a_abort(&AAbort {
+                source: 0,
+                reason: 0,
+            }))
             .await;
         self.state = AssociationState::Closed;
         Ok(())
@@ -369,21 +359,13 @@ impl Association {
     // ── DIMSE helpers ─────────────────────────────────────────────────────────
 
     /// Encode and send a DIMSE command dataset as command PDVs.
-    pub async fn send_dimse_command(
-        &mut self,
-        context_id: u8,
-        command: &DataSet,
-    ) -> DcmResult<()> {
+    pub async fn send_dimse_command(&mut self, context_id: u8, command: &DataSet) -> DcmResult<()> {
         let bytes = dimse::encode_command_dataset(command);
         self.send_pdata(context_id, &bytes, true, true).await
     }
 
     /// Send pre-encoded DIMSE data (e.g. an SOP instance) as data PDVs.
-    pub async fn send_dimse_data(
-        &mut self,
-        context_id: u8,
-        data: &[u8],
-    ) -> DcmResult<()> {
+    pub async fn send_dimse_data(&mut self, context_id: u8, data: &[u8]) -> DcmResult<()> {
         self.send_pdata(context_id, data, false, true).await
     }
 
@@ -486,8 +468,10 @@ mod tests {
 
     #[test]
     fn negotiate_pc_accept_all() {
-        let mut config = AssociationConfig::default();
-        config.accept_all_transfer_syntaxes = true;
+        let config = AssociationConfig {
+            accept_all_transfer_syntaxes: true,
+            ..Default::default()
+        };
 
         let pc = PresentationContextRqItem {
             id: 1,
@@ -505,10 +489,7 @@ mod tests {
         let pc = PresentationContextRqItem {
             id: 1,
             abstract_syntax: "1.2.840.10008.1.1".to_string(),
-            transfer_syntaxes: vec![
-                TS_IMPLICIT_VR_LE.to_string(),
-                TS_EXPLICIT_VR_LE.to_string(),
-            ],
+            transfer_syntaxes: vec![TS_IMPLICIT_VR_LE.to_string(), TS_EXPLICIT_VR_LE.to_string()],
         };
         let (result, ts) = negotiate_pc(&pc, &config);
         assert_eq!(result, 0);
@@ -529,8 +510,10 @@ mod tests {
 
     #[test]
     fn negotiate_pc_unsupported_abstract_syntax() {
-        let mut config = AssociationConfig::default();
-        config.accepted_abstract_syntaxes = vec!["1.2.840.10008.1.1".to_string()];
+        let config = AssociationConfig {
+            accepted_abstract_syntaxes: vec!["1.2.840.10008.1.1".to_string()],
+            ..Default::default()
+        };
 
         let pc = PresentationContextRqItem {
             id: 1,
@@ -545,18 +528,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_echo_loopback() {
-        use dicom_toolkit_dict::tags;
         use crate::services::echo::c_echo;
+        use dicom_toolkit_dict::tags;
 
-        let listener =
-            tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
 
         // ── SCP task ────────────────────────────────────────────────────────
         let scp_handle = tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
-            let mut config = AssociationConfig::default();
-            config.accept_all_transfer_syntaxes = true;
+            let config = AssociationConfig {
+                accept_all_transfer_syntaxes: true,
+                ..Default::default()
+            };
 
             let mut assoc = Association::accept(stream, &config).await.unwrap();
 
@@ -585,15 +569,9 @@ mod tests {
             transfer_syntaxes: vec![TS_EXPLICIT_VR_LE.to_string()],
         }];
 
-        let mut assoc = Association::request(
-            &addr.to_string(),
-            "SCP",
-            "SCU",
-            &contexts,
-            &config,
-        )
-        .await
-        .unwrap();
+        let mut assoc = Association::request(&addr.to_string(), "SCP", "SCU", &contexts, &config)
+            .await
+            .unwrap();
 
         let ctx_id = assoc
             .find_context("1.2.840.10008.1.1")

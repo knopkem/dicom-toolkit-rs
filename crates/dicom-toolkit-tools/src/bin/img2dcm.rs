@@ -11,7 +11,7 @@ use clap::Parser;
 
 use dicom_toolkit_core::uid::{sop_class, Uid};
 use dicom_toolkit_data::{DataSet, FileFormat};
-use dicom_toolkit_dict::{Vr, tags};
+use dicom_toolkit_dict::{tags, Vr};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Decode PNG.
     let file = fs::File::open(&args.input)?;
     let reader = BufReader::new(file);
-    let mut decoder = png::Decoder::new(reader);
+    let decoder = png::Decoder::new(reader);
     let mut png_reader = decoder.read_info()?;
     let mut img_data = vec![0u8; png_reader.output_buffer_size()];
     let frame_info = png_reader.next_frame(&mut img_data)?;
@@ -92,31 +92,27 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let width = frame_info.width as u16;
     let height = frame_info.height as u16;
 
-    let (samples_per_pixel, photometric, bits_allocated, bits_stored) =
-        match frame_info.color_type {
-            png::ColorType::Grayscale => (1u16, "MONOCHROME2", 8u16, 8u16),
-            png::ColorType::GrayscaleAlpha => {
-                // Drop alpha channel.
-                img_data = img_data
-                    .chunks_exact(2)
-                    .map(|c| c[0])
-                    .collect();
-                (1u16, "MONOCHROME2", 8u16, 8u16)
-            }
-            png::ColorType::Rgb => (3u16, "RGB", 8u16, 8u16),
-            png::ColorType::Rgba => {
-                // Drop alpha channel.
-                img_data = img_data
-                    .chunks_exact(4)
-                    .map(|c| [c[0], c[1], c[2]])
-                    .flatten()
-                    .collect();
-                (3u16, "RGB", 8u16, 8u16)
-            }
-            png::ColorType::Indexed => {
-                return Err("indexed-color PNG is not supported; convert to RGB first".into());
-            }
-        };
+    let (samples_per_pixel, photometric, bits_allocated, bits_stored) = match frame_info.color_type
+    {
+        png::ColorType::Grayscale => (1u16, "MONOCHROME2", 8u16, 8u16),
+        png::ColorType::GrayscaleAlpha => {
+            // Drop alpha channel.
+            img_data = img_data.chunks_exact(2).map(|c| c[0]).collect();
+            (1u16, "MONOCHROME2", 8u16, 8u16)
+        }
+        png::ColorType::Rgb => (3u16, "RGB", 8u16, 8u16),
+        png::ColorType::Rgba => {
+            // Drop alpha channel.
+            img_data = img_data
+                .chunks_exact(4)
+                .flat_map(|c| [c[0], c[1], c[2]])
+                .collect();
+            (3u16, "RGB", 8u16, 8u16)
+        }
+        png::ColorType::Indexed => {
+            return Err("indexed-color PNG is not supported; convert to RGB first".into());
+        }
+    };
 
     // Trim img_data to actual pixels (row stride may differ from width×channels).
     let row_bytes = width as usize * samples_per_pixel as usize;

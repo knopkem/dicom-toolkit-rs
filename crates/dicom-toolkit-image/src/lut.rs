@@ -26,7 +26,10 @@ impl ModalityLut {
 
     /// Identity LUT: slope = 1.0, intercept = 0.0.
     pub fn identity() -> Self {
-        Self { intercept: 0.0, slope: 1.0 }
+        Self {
+            intercept: 0.0,
+            slope: 1.0,
+        }
     }
 
     /// Returns `true` if this is an identity transformation.

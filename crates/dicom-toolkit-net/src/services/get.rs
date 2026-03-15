@@ -77,10 +77,7 @@ pub struct GetResult {
 /// * **C-GET-RSP** messages are collected into [`GetResult::responses`];
 ///   pending responses (`0xFF00` / `0xFF01`) continue the loop and the final
 ///   response terminates it.
-pub async fn c_get(
-    assoc: &mut Association,
-    req: GetRequest,
-) -> DcmResult<GetResult> {
+pub async fn c_get(assoc: &mut Association, req: GetRequest) -> DcmResult<GetResult> {
     let msg_id = next_message_id();
 
     // Build C-GET-RQ command dataset.
@@ -172,7 +169,10 @@ pub async fn c_get(
         }
     }
 
-    Ok(GetResult { responses, instances })
+    Ok(GetResult {
+        responses,
+        instances,
+    })
 }
 
 fn next_message_id() -> u16 {
@@ -222,8 +222,14 @@ mod tests {
         let decoded = dimse::decode_command_dataset(&bytes).unwrap();
 
         assert_eq!(decoded.get_u16(tags::STATUS), Some(0xFF00));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS), Some(5));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS), Some(2));
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS),
+            Some(5)
+        );
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS),
+            Some(2)
+        );
     }
 
     #[test]
@@ -239,6 +245,9 @@ mod tests {
         let decoded = dimse::decode_command_dataset(&bytes).unwrap();
 
         assert_eq!(decoded.get_u16(tags::STATUS), Some(0x0000));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS), Some(7));
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS),
+            Some(7)
+        );
     }
 }

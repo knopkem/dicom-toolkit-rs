@@ -7,8 +7,8 @@
 //! [1B type][1B reserved=0][4B body-length (u32 BE)]
 //! ```
 
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use dicom_toolkit_core::error::{DcmError, DcmResult};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 // ── PDU type constants ────────────────────────────────────────────────────────
 
@@ -175,12 +175,11 @@ pub(crate) fn decode_uid_bytes(data: &[u8]) -> String {
 }
 
 fn encode_presentation_context_rq(pc: &PresentationContextRqItem) -> Vec<u8> {
-    let mut body = Vec::new();
-    body.push(pc.id);
-    body.push(0); // reserved
-    body.push(0); // reserved
-    body.push(0); // reserved
-    body.extend_from_slice(&encode_uid_sub_item(ITEM_ABSTRACT_SYNTAX, &pc.abstract_syntax));
+    let mut body = vec![pc.id, 0, 0, 0];
+    body.extend_from_slice(&encode_uid_sub_item(
+        ITEM_ABSTRACT_SYNTAX,
+        &pc.abstract_syntax,
+    ));
     for ts in &pc.transfer_syntaxes {
         body.extend_from_slice(&encode_uid_sub_item(ITEM_TRANSFER_SYNTAX, ts));
     }
@@ -193,12 +192,11 @@ fn encode_presentation_context_rq(pc: &PresentationContextRqItem) -> Vec<u8> {
 }
 
 fn encode_presentation_context_ac(pc: &PresentationContextAcItem) -> Vec<u8> {
-    let mut body = Vec::new();
-    body.push(pc.id);
-    body.push(0); // reserved
-    body.push(pc.result);
-    body.push(0); // reserved
-    body.extend_from_slice(&encode_uid_sub_item(ITEM_TRANSFER_SYNTAX, &pc.transfer_syntax));
+    let mut body = vec![pc.id, 0, pc.result, 0];
+    body.extend_from_slice(&encode_uid_sub_item(
+        ITEM_TRANSFER_SYNTAX,
+        &pc.transfer_syntax,
+    ));
     let mut buf = Vec::with_capacity(4 + body.len());
     buf.push(ITEM_PRESENTATION_CONTEXT_AC);
     buf.push(0);
@@ -217,7 +215,10 @@ fn encode_user_information(max_pdu: u32, impl_uid: &str, impl_version: &str) -> 
     user_data.extend_from_slice(&max_pdu.to_be_bytes());
 
     // Implementation Class UID (0x52)
-    user_data.extend_from_slice(&encode_uid_sub_item(ITEM_IMPLEMENTATION_CLASS_UID, impl_uid));
+    user_data.extend_from_slice(&encode_uid_sub_item(
+        ITEM_IMPLEMENTATION_CLASS_UID,
+        impl_uid,
+    ));
 
     // Implementation Version Name (0x55), only if non-empty
     if !impl_version.is_empty() {
@@ -236,12 +237,7 @@ fn encode_user_information(max_pdu: u32, impl_uid: &str, impl_version: &str) -> 
     buf
 }
 
-fn encode_associate_header(
-    buf: &mut Vec<u8>,
-    called: &str,
-    calling: &str,
-    app_ctx: &str,
-) {
+fn encode_associate_header(buf: &mut Vec<u8>, called: &str, calling: &str, app_ctx: &str) {
     buf.extend_from_slice(&1u16.to_be_bytes()); // protocol version
     buf.extend_from_slice(&0u16.to_be_bytes()); // reserved
     write_ae_title(buf, called);
@@ -362,7 +358,11 @@ fn decode_pc_rq(data: &[u8]) -> DcmResult<PresentationContextRqItem> {
             _ => {}
         }
     }
-    Ok(PresentationContextRqItem { id, abstract_syntax, transfer_syntaxes })
+    Ok(PresentationContextRqItem {
+        id,
+        abstract_syntax,
+        transfer_syntaxes,
+    })
 }
 
 fn decode_pc_ac(data: &[u8]) -> DcmResult<PresentationContextAcItem> {
@@ -389,7 +389,11 @@ fn decode_pc_ac(data: &[u8]) -> DcmResult<PresentationContextAcItem> {
             transfer_syntax = decode_uid_bytes(sub_data);
         }
     }
-    Ok(PresentationContextAcItem { id, result, transfer_syntax })
+    Ok(PresentationContextAcItem {
+        id,
+        result,
+        transfer_syntax,
+    })
 }
 
 fn decode_user_info(data: &[u8]) -> DcmResult<(u32, String, String)> {
@@ -409,12 +413,8 @@ fn decode_user_info(data: &[u8]) -> DcmResult<(u32, String, String)> {
         pos += item_len;
         match item_type {
             ITEM_MAX_PDU_LENGTH if item_data.len() >= 4 => {
-                max_pdu = u32::from_be_bytes([
-                    item_data[0],
-                    item_data[1],
-                    item_data[2],
-                    item_data[3],
-                ]);
+                max_pdu =
+                    u32::from_be_bytes([item_data[0], item_data[1], item_data[2], item_data[3]]);
             }
             ITEM_IMPLEMENTATION_CLASS_UID => {
                 impl_uid = decode_uid_bytes(item_data);
@@ -428,19 +428,19 @@ fn decode_user_info(data: &[u8]) -> DcmResult<(u32, String, String)> {
     Ok((max_pdu, impl_uid, impl_version))
 }
 
-/// Decode the sub-items block common to both RQ and AC associate PDUs.
-///
-/// Returns `(rq_pcs, ac_pcs, app_context_uid, max_pdu, impl_class_uid, impl_version)`.
-fn decode_sub_items(
-    data: &[u8],
-) -> DcmResult<(
+type SubItemsResult = (
     Vec<PresentationContextRqItem>,
     Vec<PresentationContextAcItem>,
     String,
     u32,
     String,
     String,
-)> {
+);
+
+/// Decode the sub-items block common to both RQ and AC associate PDUs.
+///
+/// Returns `(rq_pcs, ac_pcs, app_context_uid, max_pdu, impl_class_uid, impl_version)`.
+fn decode_sub_items(data: &[u8]) -> DcmResult<SubItemsResult> {
     let mut rq_pcs = Vec::new();
     let mut ac_pcs = Vec::new();
     let mut app_context = String::new();
@@ -499,8 +499,7 @@ pub fn decode_associate_rq(body: &[u8]) -> DcmResult<AssociateRq> {
     }
     let called = read_ae_title(&body[4..20]);
     let calling = read_ae_title(&body[20..36]);
-    let (rq_pcs, _, app_ctx, max_pdu, impl_uid, impl_version) =
-        decode_sub_items(&body[68..])?;
+    let (rq_pcs, _, app_ctx, max_pdu, impl_uid, impl_version) = decode_sub_items(&body[68..])?;
     Ok(AssociateRq {
         called_ae_title: called,
         calling_ae_title: calling,
@@ -522,8 +521,7 @@ pub fn decode_associate_ac(body: &[u8]) -> DcmResult<AssociateAc> {
     }
     let called = read_ae_title(&body[4..20]);
     let calling = read_ae_title(&body[20..36]);
-    let (_, ac_pcs, app_ctx, max_pdu, impl_uid, impl_version) =
-        decode_sub_items(&body[68..])?;
+    let (_, ac_pcs, app_ctx, max_pdu, impl_uid, impl_version) = decode_sub_items(&body[68..])?;
     Ok(AssociateAc {
         called_ae_title: called,
         calling_ae_title: calling,
@@ -543,7 +541,11 @@ pub fn decode_associate_rj(body: &[u8]) -> DcmResult<AssociateRj> {
             body.len()
         )));
     }
-    Ok(AssociateRj { result: body[1], source: body[2], reason: body[3] })
+    Ok(AssociateRj {
+        result: body[1],
+        source: body[2],
+        reason: body[3],
+    })
 }
 
 /// Decode a P-DATA-TF body (one or more PDV items).
@@ -552,8 +554,7 @@ pub fn decode_p_data_tf(body: &[u8]) -> DcmResult<PDataTf> {
     let mut pos = 0;
     while pos + 4 <= body.len() {
         let item_len =
-            u32::from_be_bytes([body[pos], body[pos + 1], body[pos + 2], body[pos + 3]])
-                as usize;
+            u32::from_be_bytes([body[pos], body[pos + 1], body[pos + 2], body[pos + 3]]) as usize;
         pos += 4;
         if item_len < 2 || pos + item_len > body.len() {
             return Err(DcmError::Other(format!(
@@ -565,7 +566,11 @@ pub fn decode_p_data_tf(body: &[u8]) -> DcmResult<PDataTf> {
         let msg_control = body[pos + 1];
         let data = body[pos + 2..pos + item_len].to_vec();
         pos += item_len;
-        pdvs.push(Pdv { context_id, msg_control, data });
+        pdvs.push(Pdv {
+            context_id,
+            msg_control,
+            data,
+        });
     }
     Ok(PDataTf { pdvs })
 }
@@ -586,8 +591,7 @@ pub async fn read_pdu<R: AsyncRead + Unpin>(reader: &mut R) -> DcmResult<Pdu> {
     let mut header = [0u8; 6];
     reader.read_exact(&mut header).await?;
     let pdu_type = header[0];
-    let body_len =
-        u32::from_be_bytes([header[2], header[3], header[4], header[5]]) as usize;
+    let body_len = u32::from_be_bytes([header[2], header[3], header[4], header[5]]) as usize;
     let mut body = vec![0u8; body_len];
     reader.read_exact(&mut body).await?;
 
@@ -646,7 +650,8 @@ mod tests {
         assert_eq!(encoded[0], PDU_ASSOCIATE_RQ);
 
         // Decode body (skip 6-byte header)
-        let body_len = u32::from_be_bytes([encoded[2], encoded[3], encoded[4], encoded[5]]) as usize;
+        let body_len =
+            u32::from_be_bytes([encoded[2], encoded[3], encoded[4], encoded[5]]) as usize;
         assert_eq!(body_len, encoded.len() - 6);
 
         let decoded = decode_associate_rq(&encoded[6..]).unwrap();
@@ -697,7 +702,11 @@ mod tests {
 
     #[test]
     fn associate_rj_roundtrip() {
-        let rj = AssociateRj { result: 1, source: 1, reason: 1 };
+        let rj = AssociateRj {
+            result: 1,
+            source: 1,
+            reason: 1,
+        };
         let encoded = encode_associate_rj(&rj);
         assert_eq!(encoded[0], PDU_ASSOCIATE_RJ);
 
@@ -710,7 +719,11 @@ mod tests {
     #[test]
     fn p_data_tf_roundtrip() {
         let data = b"Hello DICOM".to_vec();
-        let pdv = Pdv { context_id: 1, msg_control: 0x03, data: data.clone() };
+        let pdv = Pdv {
+            context_id: 1,
+            msg_control: 0x03,
+            data: data.clone(),
+        };
         let encoded = encode_p_data_tf(&[pdv]);
         assert_eq!(encoded[0], PDU_P_DATA_TF);
 
@@ -726,7 +739,11 @@ mod tests {
     fn p_data_tf_data_pdv() {
         let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
         // msg_control: bit0=last, bit1=0 → data PDV
-        let pdv = Pdv { context_id: 3, msg_control: 0x01, data: data.clone() };
+        let pdv = Pdv {
+            context_id: 3,
+            msg_control: 0x01,
+            data: data.clone(),
+        };
         let encoded = encode_p_data_tf(&[pdv]);
         let decoded = decode_p_data_tf(&encoded[6..]).unwrap();
         assert!(decoded.pdvs[0].is_last());
@@ -746,7 +763,10 @@ mod tests {
 
     #[test]
     fn a_abort_roundtrip() {
-        let abort = AAbort { source: 2, reason: 0 };
+        let abort = AAbort {
+            source: 2,
+            reason: 0,
+        };
         let encoded = encode_a_abort(&abort);
         assert_eq!(encoded[0], PDU_A_ABORT);
 
@@ -793,7 +813,11 @@ mod tests {
 
     #[tokio::test]
     async fn read_pdu_p_data() {
-        let pdv = Pdv { context_id: 1, msg_control: 0x03, data: vec![1, 2, 3] };
+        let pdv = Pdv {
+            context_id: 1,
+            msg_control: 0x03,
+            data: vec![1, 2, 3],
+        };
         let bytes = encode_p_data_tf(&[pdv]);
         let mut cursor = std::io::Cursor::new(bytes);
         let pdu = read_pdu(&mut cursor).await.unwrap();

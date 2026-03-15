@@ -50,10 +50,7 @@ pub struct MoveResponse {
 /// Sends a C-MOVE-RQ, then collects all pending C-MOVE-RSP messages
 /// (status `0xFF00`) plus the final response.  Returns all responses
 /// in the order they were received.
-pub async fn c_move(
-    assoc: &mut Association,
-    req: MoveRequest,
-) -> DcmResult<Vec<MoveResponse>> {
+pub async fn c_move(assoc: &mut Association, req: MoveRequest) -> DcmResult<Vec<MoveResponse>> {
     let msg_id = next_message_id();
 
     // Build C-MOVE-RQ command dataset.
@@ -132,7 +129,10 @@ mod tests {
 
         assert_eq!(decoded.get_u16(tags::COMMAND_FIELD), Some(0x0021));
         assert_eq!(decoded.get_u16(tags::MESSAGE_ID), Some(3));
-        assert_eq!(decoded.get_string(tags::MOVE_DESTINATION), Some("STORAGESCU"));
+        assert_eq!(
+            decoded.get_string(tags::MOVE_DESTINATION),
+            Some("STORAGESCU")
+        );
     }
 
     #[test]
@@ -151,9 +151,18 @@ mod tests {
         let decoded = dimse::decode_command_dataset(&bytes).unwrap();
 
         assert_eq!(decoded.get_u16(tags::STATUS), Some(0xFF00));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS), Some(10));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS), Some(3));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_WARNING_SUB_OPERATIONS), Some(1));
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_REMAINING_SUB_OPERATIONS),
+            Some(10)
+        );
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS),
+            Some(3)
+        );
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_WARNING_SUB_OPERATIONS),
+            Some(1)
+        );
     }
 
     #[test]
@@ -169,6 +178,9 @@ mod tests {
         let decoded = dimse::decode_command_dataset(&bytes).unwrap();
 
         assert_eq!(decoded.get_u16(tags::STATUS), Some(0x0000));
-        assert_eq!(decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS), Some(13));
+        assert_eq!(
+            decoded.get_u16(tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS),
+            Some(13)
+        );
     }
 }

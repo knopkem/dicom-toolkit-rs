@@ -93,8 +93,8 @@ pub fn decode_jpeg_ls(data: &[u8]) -> DcmResult<DecodedFrame> {
             if needs_u16(params.bits_per_sample) {
                 let mut output = vec![0u8; w * h * components * 2];
                 for pixel in 0..(w * h) {
-                    for c in 0..components {
-                        let val = all_pixels[c][pixel] as u16;
+                    for (c, pixels) in all_pixels.iter().enumerate().take(components) {
+                        let val = pixels[pixel] as u16;
                         let offset = (pixel * components + c) * 2;
                         u16::write_le(&mut output, offset, val);
                     }
@@ -109,8 +109,8 @@ pub fn decode_jpeg_ls(data: &[u8]) -> DcmResult<DecodedFrame> {
             } else {
                 let mut output = vec![0u8; w * h * components];
                 for pixel in 0..(w * h) {
-                    for c in 0..components {
-                        output[pixel * components + c] = all_pixels[c][pixel] as u8;
+                    for (c, pixels) in all_pixels.iter().enumerate().take(components) {
+                        output[pixel * components + c] = pixels[pixel] as u8;
                     }
                 }
                 Ok(DecodedFrame {
@@ -161,7 +161,18 @@ pub fn decode_jpeg_ls(data: &[u8]) -> DcmResult<DecodedFrame> {
                 // ILV_SAMPLE: pixel-interleaved (triplets). More complex.
                 // For now, implement ILV_LINE for multi-component.
                 if params.interleave == InterleaveMode::Line {
-                    decode_line_interleaved(data, &frame_info, traits, t1, t2, t3, w, h, components, params)
+                    decode_line_interleaved(
+                        data,
+                        &frame_info,
+                        traits,
+                        t1,
+                        t2,
+                        t3,
+                        w,
+                        h,
+                        components,
+                        params,
+                    )
                 } else {
                     // ILV_SAMPLE — TODO: implement triplet mode in Phase 3.
                     Err(DcmError::DecompressionError {
@@ -174,6 +185,7 @@ pub fn decode_jpeg_ls(data: &[u8]) -> DcmResult<DecodedFrame> {
 }
 
 /// Decode a line-interleaved multi-component scan.
+#[allow(clippy::too_many_arguments)]
 fn decode_line_interleaved(
     data: &[u8],
     frame_info: &marker::FrameInfo,
@@ -228,4 +240,3 @@ fn decode_line_interleaved(
         components: params.components,
     })
 }
-

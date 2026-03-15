@@ -1,5 +1,6 @@
-//! > ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
-//! Foundation types and utilities for the dcmtk-rs DICOM toolkit.
+//! ⚠️ **NOT FOR CLINICAL USE** — This software has not been validated for diagnostic or therapeutic purposes.
+//!
+//! Foundation types and utilities for the dicom-toolkit-rs DICOM toolkit.
 
 pub mod charset;
 pub mod config;

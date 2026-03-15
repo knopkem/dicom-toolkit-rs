@@ -36,15 +36,14 @@ impl PaletteColorLut {
     /// - `(0028,1101)` / `(0028,1102)` / `(0028,1103)` — descriptors
     /// - `(0028,1201)` / `(0028,1202)` / `(0028,1203)` — LUT data
     pub fn from_dataset(dataset: &DataSet) -> DcmResult<Self> {
-        let red_desc_tag   = Tag::new(0x0028, 0x1101);
+        let red_desc_tag = Tag::new(0x0028, 0x1101);
         let green_desc_tag = Tag::new(0x0028, 0x1102);
-        let blue_desc_tag  = Tag::new(0x0028, 0x1103);
-        let red_data_tag   = Tag::new(0x0028, 0x1201);
+        let blue_desc_tag = Tag::new(0x0028, 0x1103);
+        let red_data_tag = Tag::new(0x0028, 0x1201);
         let green_data_tag = Tag::new(0x0028, 0x1202);
-        let blue_data_tag  = Tag::new(0x0028, 0x1203);
+        let blue_data_tag = Tag::new(0x0028, 0x1203);
 
-        let (n_entries, first_value, bits_per_entry) =
-            read_lut_descriptor(dataset, red_desc_tag)?;
+        let (n_entries, first_value, bits_per_entry) = read_lut_descriptor(dataset, red_desc_tag)?;
 
         // Verify the other two descriptors match (best-effort).
         let _ = read_lut_descriptor(dataset, green_desc_tag);
@@ -52,11 +51,17 @@ impl PaletteColorLut {
 
         let n = if n_entries == 0 { 256 } else { n_entries };
 
-        let red   = read_lut_data(dataset, red_data_tag, n)?;
+        let red = read_lut_data(dataset, red_data_tag, n)?;
         let green = read_lut_data(dataset, green_data_tag, n)?;
-        let blue  = read_lut_data(dataset, blue_data_tag, n)?;
+        let blue = read_lut_data(dataset, blue_data_tag, n)?;
 
-        Ok(Self { red, green, blue, first_value, bits_per_entry })
+        Ok(Self {
+            red,
+            green,
+            blue,
+            first_value,
+            bits_per_entry,
+        })
     }
 
     /// Look up an 8-bit RGB triple for the given pixel `index`.
@@ -110,7 +115,7 @@ fn read_lut_data(dataset: &DataSet, tag: Tag, _expected_n: usize) -> DcmResult<V
     let elem = dataset.find_element(tag)?;
     match &elem.value {
         Value::U16(data) => Ok(data.clone()),
-        Value::U8(data)  => {
+        Value::U8(data) => {
             // 8-bit entries packed as low bytes of 16-bit words — keep as-is
             Ok(data.iter().map(|&v| v as u16).collect())
         }
@@ -142,7 +147,7 @@ mod tests {
     #[test]
     fn palette_lookup_identity() {
         let lut = make_lut();
-        assert_eq!(lut.lookup(0),   (0, 0, 0));
+        assert_eq!(lut.lookup(0), (0, 0, 0));
         assert_eq!(lut.lookup(128), (128, 128, 128));
         assert_eq!(lut.lookup(255), (255, 255, 255));
     }

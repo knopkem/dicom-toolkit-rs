@@ -87,13 +87,10 @@ impl JlsContext {
 
     /// Compute near-lossless correction: A must be adjusted to reflect quantized errors.
     #[inline]
-    fn near_correction(&self, near: i32) -> i32 {
-        if near == 0 {
-            0
-        } else {
-            0 // In the original CharLS, this is handled differently;
-              // the error is already quantized before being passed here.
-        }
+    fn near_correction(&self, _near: i32) -> i32 {
+        // In the original CharLS, this is handled differently;
+        // the error is already quantized before being passed here.
+        0
     }
 
     /// Adjust bias (C) and halve counters when N reaches RESET.
@@ -116,7 +113,6 @@ impl JlsContext {
             }
             let idx = ((self.b.wrapping_div(n.max(1)) + 128) as usize).min(255);
             self.c = self.c.wrapping_add(TABLE_C[idx]);
-            self.c = self.c.min(127);
         }
 
         self.n += 1;
@@ -178,11 +174,9 @@ impl RunModeContext {
     /// Compute the map value (whether to add 1 to the mapped error).
     #[inline]
     pub fn compute_map(&self, err_val: i32, k: i32) -> i32 {
-        if k == 0 && err_val > 0 && 2 * self.nn < self.n {
-            1
-        } else if err_val < 0 && 2 * self.nn >= self.n {
-            1
-        } else if err_val < 0 && k != 0 {
+        if (k == 0 && err_val > 0 && 2 * self.nn < self.n)
+            || (err_val < 0 && (2 * self.nn >= self.n || k != 0))
+        {
             1
         } else {
             0
@@ -229,18 +223,33 @@ mod tests {
     #[test]
     fn golomb_k_zero() {
         // A <= N → k = 0
-        let ctx = JlsContext { a: 1, b: 0, c: 0, n: 2 };
+        let ctx = JlsContext {
+            a: 1,
+            b: 0,
+            c: 0,
+            n: 2,
+        };
         assert_eq!(ctx.get_golomb(), 0);
     }
 
     #[test]
     fn error_correction_at_k_zero() {
         // k=0, 2*B <= -N → correction = 1
-        let ctx = JlsContext { a: 1, b: -5, c: 0, n: 2 };
+        let ctx = JlsContext {
+            a: 1,
+            b: -5,
+            c: 0,
+            n: 2,
+        };
         assert_eq!(ctx.get_error_correction(0), 1);
 
         // k=0, 2*B > -N → correction = 0
-        let ctx2 = JlsContext { a: 1, b: 0, c: 0, n: 2 };
+        let ctx2 = JlsContext {
+            a: 1,
+            b: 0,
+            c: 0,
+            n: 2,
+        };
         assert_eq!(ctx2.get_error_correction(0), 0);
 
         // k != 0 → correction = 0

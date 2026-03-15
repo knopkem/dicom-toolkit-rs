@@ -37,7 +37,7 @@ impl Overlay {
             .iter()
             .filter_map(|(tag, _)| {
                 let g = tag.group;
-                if g >= 0x6000 && g <= 0x601E && g % 2 == 0 {
+                if (0x6000..=0x601E).contains(&g) && g % 2 == 0 {
                     Some(g)
                 } else {
                     None
@@ -55,7 +55,7 @@ impl Overlay {
 
     /// Attempt to build an `Overlay` from a specific group within a `DataSet`.
     fn from_group(dataset: &DataSet, group: u16) -> Option<Self> {
-        let rows    = dataset.get_u16(Tag::new(group, 0x0010))?;
+        let rows = dataset.get_u16(Tag::new(group, 0x0010))?;
         let columns = dataset.get_u16(Tag::new(group, 0x0011))?;
 
         let origin = read_origin(dataset, group);
@@ -63,7 +63,13 @@ impl Overlay {
         let data_tag = Tag::new(group, 0x3000);
         let data = dataset.get_bytes(data_tag)?.to_vec();
 
-        Some(Self { group, rows, columns, origin, data })
+        Some(Self {
+            group,
+            rows,
+            columns,
+            origin,
+            data,
+        })
     }
 
     /// Return the value of the overlay pixel at (`row`, `col`) (0-indexed).
@@ -76,7 +82,7 @@ impl Overlay {
         }
         let bit_index = row as usize * self.columns as usize + col as usize;
         let byte_index = bit_index / 8;
-        let bit_pos    = bit_index % 8;
+        let bit_pos = bit_index % 8;
         self.data
             .get(byte_index)
             .map(|&b| (b >> bit_pos) & 1 != 0)
@@ -160,9 +166,9 @@ mod tests {
         let overlay = make_overlay(data, 4, 4);
         let bm = overlay.to_bitmap();
         assert_eq!(bm.len(), 16);
-        assert_eq!(bm[0], 1);  // pixel (0,0)
-        assert_eq!(bm[1], 0);  // pixel (0,1)
-        assert_eq!(bm[8], 1);  // pixel (2,0)
+        assert_eq!(bm[0], 1); // pixel (0,0)
+        assert_eq!(bm[1], 0); // pixel (0,1)
+        assert_eq!(bm[8], 1); // pixel (2,0)
     }
 
     #[test]

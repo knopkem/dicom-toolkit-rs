@@ -52,9 +52,7 @@ fn main() {
 
     let ts = &ff.meta.transfer_syntax_uid;
     if ts != TS_JPEGLS_LOSSLESS && ts != TS_JPEGLS_LOSSY {
-        eprintln!(
-            "Warning: input transfer syntax is not JPEG-LS ({ts}), attempting decode anyway"
-        );
+        eprintln!("Warning: input transfer syntax is not JPEG-LS ({ts}), attempting decode anyway");
     }
 
     let ds = &ff.dataset;
@@ -84,10 +82,7 @@ fn main() {
                 out_ff.meta.transfer_syntax_uid = TS_EXPLICIT_VR_LE.to_string();
                 match out_ff.save(&args.output) {
                     Ok(()) => {
-                        eprintln!(
-                            "Written: {} (already uncompressed)",
-                            args.output.display()
-                        );
+                        eprintln!("Written: {} (already uncompressed)", args.output.display());
                     }
                     Err(e) => {
                         eprintln!("Error writing {}: {e}", args.output.display());
@@ -151,9 +146,7 @@ fn main() {
     let mut out_ff = ff.clone();
     out_ff.meta.transfer_syntax_uid = TS_EXPLICIT_VR_LE.to_string();
 
-    let pixel_data = PixelData::Native {
-        bytes: all_pixels,
-    };
+    let pixel_data = PixelData::Native { bytes: all_pixels };
     out_ff.dataset.insert(dicom_toolkit_data::Element {
         tag: tags::PIXEL_DATA,
         vr: if bits_allocated > 8 {

@@ -6,9 +6,9 @@
 //! - ofstd/tests/terror.cc (error handling tests → DcmError)
 //! - dcmdata/tests/tgenuid.cc (UID generation tests → Uid::generate)
 
-use dicom_toolkit_core::uid::Uid;
-use dicom_toolkit_core::error::DcmError;
 use dicom_toolkit_core::charset::{decode_string, encode_string, DicomCharsetDecoder};
+use dicom_toolkit_core::error::DcmError;
+use dicom_toolkit_core::uid::Uid;
 use std::collections::HashSet;
 
 // ── Ported from dcmdata/tests/tgenuid.cc ────────────────────────────────────
@@ -21,10 +21,7 @@ fn generated_uids_are_unique() {
     for _ in 0..10_000 {
         let uid = Uid::generate("1.2.3").expect("UID generation must not fail");
         let s = uid.to_string();
-        assert!(
-            seen.insert(s.clone()),
-            "Generated a duplicate UID: {s}"
-        );
+        assert!(seen.insert(s.clone()), "Generated a duplicate UID: {s}");
     }
 }
 
@@ -35,11 +32,17 @@ fn generated_uid_is_valid() {
     for _ in 0..100 {
         let uid = Uid::generate("1.2.840.10008").expect("UID generation must not fail");
         let s = uid.to_string();
-        assert!(s.starts_with("1.2.840.10008."), "UID should start with root prefix");
+        assert!(
+            s.starts_with("1.2.840.10008."),
+            "UID should start with root prefix"
+        );
         assert!(s.len() <= 64, "UID exceeds max length 64: len={}", s.len());
         // must contain only digits and dots
         for ch in s.chars() {
-            assert!(ch.is_ascii_digit() || ch == '.', "Invalid char '{ch}' in UID: {s}");
+            assert!(
+                ch.is_ascii_digit() || ch == '.',
+                "Invalid char '{ch}' in UID: {s}"
+            );
         }
         // each component must not have a leading zero (except "0")
         for component in s.split('.') {
@@ -85,26 +88,50 @@ fn uid_rejects_invalid_strings() {
     // empty
     assert!(Uid::new("").is_err(), "empty UID should be rejected");
     // leading dot
-    assert!(Uid::new(".1.2.3").is_err(), "leading dot should be rejected");
+    assert!(
+        Uid::new(".1.2.3").is_err(),
+        "leading dot should be rejected"
+    );
     // trailing dot
-    assert!(Uid::new("1.2.3.").is_err(), "trailing dot should be rejected");
+    assert!(
+        Uid::new("1.2.3.").is_err(),
+        "trailing dot should be rejected"
+    );
     // consecutive dots
-    assert!(Uid::new("1..2").is_err(), "consecutive dots should be rejected");
+    assert!(
+        Uid::new("1..2").is_err(),
+        "consecutive dots should be rejected"
+    );
     // non-numeric
-    assert!(Uid::new("1.2.abc").is_err(), "non-numeric char should be rejected");
-    assert!(Uid::new("1.2.3a").is_err(), "non-numeric char should be rejected");
+    assert!(
+        Uid::new("1.2.abc").is_err(),
+        "non-numeric char should be rejected"
+    );
+    assert!(
+        Uid::new("1.2.3a").is_err(),
+        "non-numeric char should be rejected"
+    );
     // leading zero in component
-    assert!(Uid::new("1.02.3").is_err(), "leading zero in component should be rejected");
-    assert!(Uid::new("1.00.3").is_err(), "leading zeros in component should be rejected");
+    assert!(
+        Uid::new("1.02.3").is_err(),
+        "leading zero in component should be rejected"
+    );
+    assert!(
+        Uid::new("1.00.3").is_err(),
+        "leading zeros in component should be rejected"
+    );
 }
 
 /// UID exceeding 64 characters is rejected.
 #[test]
 fn uid_rejects_too_long() {
     // 65 character UID
-    let long_uid = "1.".repeat(22) + "1"; // 1. × 22 + "1" = 45 + 20 = 65+ chars
+    let _first = "1.".repeat(22) + "1"; // 1. × 22 + "1" = 45 + 20 = 65+ chars
     let long_uid = format!("1.{}", "2.".repeat(31) + "3"); // definitely > 64
-    assert!(Uid::new(&long_uid).is_err(), "UID > 64 chars should be rejected");
+    assert!(
+        Uid::new(&long_uid).is_err(),
+        "UID > 64 chars should be rejected"
+    );
 }
 
 // ── Ported from ofstd/tests/tchrenc.cc ──────────────────────────────────────
@@ -122,7 +149,7 @@ fn charset_default_ascii_roundtrip() {
 /// UTF-8 charset roundtrip.
 #[test]
 fn charset_utf8_roundtrip() {
-    let original = "田中太郎";  // Japanese name
+    let original = "田中太郎"; // Japanese name
     let encoded = encode_string(original, "ISO_IR 192").unwrap();
     let decoded = decode_string(&encoded, "ISO_IR 192").unwrap();
     assert_eq!(decoded, original);
@@ -161,30 +188,58 @@ fn charset_multi_valued_decoder() {
 #[test]
 fn error_display_strings_are_non_empty() {
     let errors: Vec<DcmError> = vec![
-        DcmError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "not found")),
+        DcmError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "not found",
+        )),
         DcmError::UnexpectedEof { offset: 42 },
-        DcmError::InvalidFile { reason: "bad magic".into() },
-        DcmError::InvalidTag { group: 0x0008, element: 0x0010, reason: "test".into() },
+        DcmError::InvalidFile {
+            reason: "bad magic".into(),
+        },
+        DcmError::InvalidTag {
+            group: 0x0008,
+            element: 0x0010,
+            reason: "test".into(),
+        },
         DcmError::VrMismatch {
             group: 0x0010,
             element: 0x0010,
             expected: "PN".into(),
             found: "LO".into(),
         },
-        DcmError::UnsupportedTransferSyntax { uid: "1.2.3".into() },
-        DcmError::NoCodec { uid: "1.2.3".into() },
-        DcmError::UnknownTag { group: 0x9999, element: 0x0001 },
-        DcmError::InvalidUid { reason: "test".into() },
-        DcmError::CharsetError { reason: "test".into() },
-        DcmError::AssociationRejected { reason: "test".into() },
-        DcmError::DimseError { status: 0xC000, description: "test".into() },
+        DcmError::UnsupportedTransferSyntax {
+            uid: "1.2.3".into(),
+        },
+        DcmError::NoCodec {
+            uid: "1.2.3".into(),
+        },
+        DcmError::UnknownTag {
+            group: 0x9999,
+            element: 0x0001,
+        },
+        DcmError::InvalidUid {
+            reason: "test".into(),
+        },
+        DcmError::CharsetError {
+            reason: "test".into(),
+        },
+        DcmError::AssociationRejected {
+            reason: "test".into(),
+        },
+        DcmError::DimseError {
+            status: 0xC000,
+            description: "test".into(),
+        },
         DcmError::Timeout { seconds: 30 },
         DcmError::Other("test error".into()),
     ];
 
     for err in &errors {
         let display = err.to_string();
-        assert!(!display.is_empty(), "Error display string should not be empty for {err:?}");
+        assert!(
+            !display.is_empty(),
+            "Error display string should not be empty for {err:?}"
+        );
     }
 }
 

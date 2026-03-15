@@ -176,6 +176,7 @@ pub fn rle_decode_frame(
     let output_len = num_pixels * samples_per_pixel as usize * bytes_per_sample;
     let mut output = vec![0u8; output_len];
 
+    #[allow(clippy::needless_range_loop)]
     for px in 0..num_pixels {
         for ch in 0..samples_per_pixel as usize {
             for byte_plane in 0..bytes_per_sample {
@@ -329,10 +330,7 @@ fn rle_num_segments(bits_allocated: u16, samples: u16) -> DcmResult<usize> {
         16 => 2,
         other => {
             return Err(DcmError::DecompressionError {
-                reason: format!(
-                    "RLE codec supports 8- or 16-bit samples, got {}",
-                    other
-                ),
+                reason: format!("RLE codec supports 8- or 16-bit samples, got {}", other),
             })
         }
     };
@@ -377,7 +375,7 @@ fn rle_codec_decode(
     }
 
     let num_pixels = rows as usize * cols as usize;
-    let bps = (bits_allocated as usize + 7) / 8; // bytes per sample
+    let bps = (bits_allocated as usize).div_ceil(8); // bytes per sample
     let bpp = samples as usize * bps; // bytes per pixel
     let mut out = vec![0u8; num_pixels * bpp];
 
@@ -438,7 +436,7 @@ fn rle_codec_encode(
 
     let num_segments = rle_num_segments(bits_allocated, samples)?;
     let num_pixels = rows as usize * cols as usize;
-    let bps = (bits_allocated as usize + 7) / 8;
+    let bps = (bits_allocated as usize).div_ceil(8);
     let bpp = samples as usize * bps;
     let expected_len = num_pixels * bpp;
 
@@ -471,18 +469,16 @@ fn rle_codec_encode(
     }
 
     // Write 64-byte header.
-    let mut out: Vec<u8> = Vec::with_capacity(
-        HDR + compressed.iter().map(|s| s.len()).sum::<usize>(),
-    );
+    let mut out: Vec<u8> =
+        Vec::with_capacity(HDR + compressed.iter().map(|s| s.len()).sum::<usize>());
     out.extend_from_slice(&(num_segments as u32).to_le_bytes());
     let mut offset = HDR as u32;
-    for i in 0..MAX_SEG {
-        if i < num_segments {
-            out.extend_from_slice(&offset.to_le_bytes());
-            offset += compressed[i].len() as u32;
-        } else {
-            out.extend_from_slice(&0u32.to_le_bytes());
-        }
+    for seg in &compressed {
+        out.extend_from_slice(&offset.to_le_bytes());
+        offset += seg.len() as u32;
+    }
+    for _ in num_segments..MAX_SEG {
+        out.extend_from_slice(&0u32.to_le_bytes());
     }
 
     for seg_bytes in &compressed {

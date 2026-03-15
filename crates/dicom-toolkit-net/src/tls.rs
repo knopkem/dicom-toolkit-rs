@@ -62,7 +62,9 @@ pub async fn connect_tls(
     connector
         .connect(sni, stream)
         .await
-        .map_err(|e| DcmError::TlsError { reason: e.to_string() })
+        .map_err(|e| DcmError::TlsError {
+            reason: e.to_string(),
+        })
 }
 
 // ── make_acceptor ─────────────────────────────────────────────────────────────
@@ -71,17 +73,16 @@ pub async fn connect_tls(
 ///
 /// * `cert_pem` — PEM-encoded server certificate chain.
 /// * `key_pem`  — PEM-encoded private key matching the first certificate.
-pub fn make_acceptor(
-    cert_pem: &[u8],
-    key_pem: &[u8],
-) -> DcmResult<tokio_rustls::TlsAcceptor> {
+pub fn make_acceptor(cert_pem: &[u8], key_pem: &[u8]) -> DcmResult<tokio_rustls::TlsAcceptor> {
     let certs = parse_certs(cert_pem)?;
     let key = parse_private_key(key_pem)?;
 
     let config = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, key)
-        .map_err(|e| DcmError::TlsError { reason: e.to_string() })?;
+        .map_err(|e| DcmError::TlsError {
+            reason: e.to_string(),
+        })?;
 
     Ok(tokio_rustls::TlsAcceptor::from(Arc::new(config)))
 }
@@ -102,9 +103,9 @@ fn build_client_config(cfg: &TlsConfig) -> DcmResult<rustls::ClientConfig> {
     let mut root_store = rustls::RootCertStore::empty();
     if let Some(ref ca_pem) = cfg.ca_cert_pem {
         for cert in parse_certs(ca_pem)? {
-            root_store
-                .add(cert)
-                .map_err(|e| DcmError::TlsError { reason: e.to_string() })?;
+            root_store.add(cert).map_err(|e| DcmError::TlsError {
+                reason: e.to_string(),
+            })?;
         }
     }
 
@@ -116,7 +117,9 @@ fn build_client_config(cfg: &TlsConfig) -> DcmResult<rustls::ClientConfig> {
             rustls::ClientConfig::builder()
                 .with_root_certificates(root_store)
                 .with_client_auth_cert(certs, key)
-                .map_err(|e| DcmError::TlsError { reason: e.to_string() })
+                .map_err(|e| DcmError::TlsError {
+                    reason: e.to_string(),
+                })
         }
         _ => Ok(rustls::ClientConfig::builder()
             .with_root_certificates(root_store)

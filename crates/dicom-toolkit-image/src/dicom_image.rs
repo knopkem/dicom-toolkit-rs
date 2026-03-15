@@ -89,18 +89,12 @@ impl DicomImage {
             .ok_or_else(|| missing("Columns (0028,0011)"))? as u32;
 
         // ── Pixel attributes ──────────────────────────────────────────────────
-        let samples_per_pixel = dataset
-            .get_u16(tags::SAMPLES_PER_PIXEL)
-            .unwrap_or(1);
+        let samples_per_pixel = dataset.get_u16(tags::SAMPLES_PER_PIXEL).unwrap_or(1);
         let bits_allocated = dataset
             .get_u16(tags::BITS_ALLOCATED)
             .ok_or_else(|| missing("BitsAllocated (0028,0100)"))?;
-        let bits_stored = dataset
-            .get_u16(tags::BITS_STORED)
-            .unwrap_or(bits_allocated);
-        let high_bit = dataset
-            .get_u16(tags::HIGH_BIT)
-            .unwrap_or(bits_stored - 1);
+        let bits_stored = dataset.get_u16(tags::BITS_STORED).unwrap_or(bits_allocated);
+        let high_bit = dataset.get_u16(tags::HIGH_BIT).unwrap_or(bits_stored - 1);
         let pixel_representation = match dataset.get_u16(tags::PIXEL_REPRESENTATION).unwrap_or(0) {
             1 => PixelRepresentation::Signed,
             _ => PixelRepresentation::Unsigned,
@@ -111,18 +105,18 @@ impl DicomImage {
         // ── Photometric interpretation ────────────────────────────────────────
         let photometric = dataset
             .get_string(tags::PHOTOMETRIC_INTERPRETATION)
-            .map(PhotometricInterpretation::from_str)
+            .map(PhotometricInterpretation::parse)
             .unwrap_or(PhotometricInterpretation::Monochrome2);
 
         // ── Window / LUT ──────────────────────────────────────────────────────
         let window_center = get_decimal(dataset, tags::WINDOW_CENTER);
-        let window_width  = get_decimal(dataset, tags::WINDOW_WIDTH);
+        let window_width = get_decimal(dataset, tags::WINDOW_WIDTH);
         let rescale_intercept = get_decimal(dataset, tags::RESCALE_INTERCEPT).unwrap_or(0.0);
-        let rescale_slope     = get_decimal(dataset, tags::RESCALE_SLOPE).unwrap_or(1.0);
+        let rescale_slope = get_decimal(dataset, tags::RESCALE_SLOPE).unwrap_or(1.0);
 
         // ── Pixel data ────────────────────────────────────────────────────────
         let pixel_bytes = extract_pixel_bytes(dataset)?;
-        let pixel_data  = Arc::new(pixel_bytes);
+        let pixel_data = Arc::new(pixel_bytes);
 
         // ── Optional palette LUT ──────────────────────────────────────────────
         let palette_lut = if photometric == PhotometricInterpretation::PaletteColor {
@@ -155,7 +149,7 @@ impl DicomImage {
 
     /// Number of bytes per sample (1 or 2).
     pub fn bytes_per_sample(&self) -> usize {
-        ((self.bits_allocated as usize) + 7) / 8
+        (self.bits_allocated as usize).div_ceil(8)
     }
 
     /// Total number of pixels per frame (rows × columns × samples_per_pixel).
@@ -193,9 +187,9 @@ impl DicomImage {
                 self.frames
             )));
         }
-        let bpf   = self.bytes_per_frame();
+        let bpf = self.bytes_per_frame();
         let start = frame as usize * bpf;
-        let end   = start + bpf;
+        let end = start + bpf;
         if end > self.pixel_data.len() {
             return Err(DcmError::Other(format!(
                 "pixel data too short: need {end} bytes, have {}",
@@ -239,7 +233,7 @@ impl DicomImage {
     /// Set the display window center and width.
     pub fn set_window(&mut self, center: f64, width: f64) {
         self.window_center = Some(center);
-        self.window_width  = Some(width);
+        self.window_width = Some(width);
     }
 
     /// Automatically compute a window from the pixel value range across **all**
@@ -247,12 +241,14 @@ impl DicomImage {
     ///
     /// Sets `window_center = (min + max) / 2` and `window_width = max − min`.
     pub fn auto_window(&mut self) {
-        let Some((min_val, max_val)) = self.pixel_minmax() else { return };
+        let Some((min_val, max_val)) = self.pixel_minmax() else {
+            return;
+        };
         if (max_val - min_val).abs() < f64::EPSILON {
             return;
         }
         self.window_center = Some((min_val + max_val) / 2.0);
-        self.window_width  = Some(max_val - min_val);
+        self.window_width = Some(max_val - min_val);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -288,10 +284,11 @@ impl DicomImage {
         let (center, width) = match (self.window_center, self.window_width) {
             (Some(c), Some(w)) => (c, w),
             _ => {
-                let (lo, hi) = values.iter().fold(
-                    (f64::INFINITY, f64::NEG_INFINITY),
-                    |(mn, mx), &v| (mn.min(v), mx.max(v)),
-                );
+                let (lo, hi) = values
+                    .iter()
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), &v| {
+                        (mn.min(v), mx.max(v))
+                    });
                 if lo >= hi {
                     // Constant image: place window so all pixels land at output_min.
                     (lo + 0.5, 1.0)
@@ -313,7 +310,7 @@ impl DicomImage {
 
     fn frame_u8_color(&self, frame: u32) -> DcmResult<Vec<u8>> {
         let raw = self.frame_bytes(frame)?;
-        let n   = self.rows as usize * self.columns as usize;
+        let n = self.rows as usize * self.columns as usize;
 
         match &self.photometric {
             PhotometricInterpretation::Rgb => {
@@ -334,11 +331,7 @@ impl DicomImage {
             }
 
             PhotometricInterpretation::YbrFull422 => {
-                color::ycbcr::ybr_full_422_to_rgb(
-                    raw,
-                    self.columns as usize,
-                    self.rows as usize,
-                )
+                color::ycbcr::ybr_full_422_to_rgb(raw, self.columns as usize, self.rows as usize)
             }
 
             PhotometricInterpretation::PaletteColor => {
@@ -348,9 +341,9 @@ impl DicomImage {
                     )
                 })?;
                 let indices: Vec<u16> = match self.bits_allocated {
-                    8  => raw.iter().map(|&v| v as u16).collect(),
+                    8 => raw.iter().map(|&v| v as u16).collect(),
                     16 => pixel::decode_u16_le(raw),
-                    b  => {
+                    b => {
                         return Err(DcmError::Other(format!(
                             "unsupported BitsAllocated={b} for PALETTE COLOR"
                         )))
@@ -374,7 +367,9 @@ impl DicomImage {
         let mut global_max = f64::MIN;
 
         for f in 0..self.frames {
-            let Ok(raw) = self.frame_bytes(f) else { continue };
+            let Ok(raw) = self.frame_bytes(f) else {
+                continue;
+            };
             let values: Vec<f64> = match (self.bits_allocated, self.pixel_representation) {
                 (8, _) => modality.apply_to_frame_u8(raw),
                 (16, PixelRepresentation::Unsigned) => {
@@ -414,11 +409,11 @@ fn get_number_of_frames(dataset: &DataSet) -> u32 {
     dataset
         .get(tags::NUMBER_OF_FRAMES)
         .and_then(|elem| match &elem.value {
-            Value::Ints(v)    => v.first().copied().map(|n| n.max(1) as u32),
+            Value::Ints(v) => v.first().copied().map(|n| n.max(1) as u32),
             Value::Strings(v) => v.first().and_then(|s| s.trim().parse::<u32>().ok()),
-            Value::U16(v)     => v.first().copied().map(|n| n as u32),
-            Value::U32(v)     => v.first().copied(),
-            _                 => None,
+            Value::U16(v) => v.first().copied().map(|n| n as u32),
+            Value::U32(v) => v.first().copied(),
+            _ => None,
         })
         .unwrap_or(1)
 }
@@ -428,10 +423,10 @@ fn get_decimal(dataset: &DataSet, tag: dicom_toolkit_dict::Tag) -> Option<f64> {
     let elem = dataset.get(tag)?;
     match &elem.value {
         Value::Decimals(v) => v.first().copied(),
-        Value::F64(v)      => v.first().copied(),
-        Value::F32(v)      => v.first().map(|&n| n as f64),
-        Value::Strings(v)  => v.first().and_then(|s| s.trim().parse::<f64>().ok()),
-        _                  => None,
+        Value::F64(v) => v.first().copied(),
+        Value::F32(v) => v.first().map(|&n| n as f64),
+        Value::Strings(v) => v.first().and_then(|s| s.trim().parse::<f64>().ok()),
+        _ => None,
     }
 }
 
@@ -505,7 +500,10 @@ mod tests {
         let out = img.frame_u8(0).unwrap();
         assert_eq!(out.len(), 4);
         // Constant image (all 0): auto-window places all pixels at output_min → all 0.
-        assert!(out.iter().all(|&v| v == 0), "expected all zeros, got {out:?}");
+        assert!(
+            out.iter().all(|&v| v == 0),
+            "expected all zeros, got {out:?}"
+        );
     }
 
     #[test]
@@ -518,8 +516,12 @@ mod tests {
         let out = img.frame_u8(0).unwrap();
         // pixel 0 → 0 → after window: near 0 → after inversion: near 255
         // pixel 255 → 255 → after window: near 255 → after inversion: near 0
-        assert!(out[0] > 200, "expected inverted bright pixel, got {}", out[0]);
-        assert!(out[1] < 50,  "expected inverted dark pixel, got {}",  out[1]);
+        assert!(
+            out[0] > 200,
+            "expected inverted bright pixel, got {}",
+            out[0]
+        );
+        assert!(out[1] < 50, "expected inverted dark pixel, got {}", out[1]);
     }
 
     #[test]
@@ -529,7 +531,7 @@ mod tests {
         let mut img = DicomImage::from_dataset(&ds).unwrap();
         img.set_window(127.5, 256.0);
         let norm = img.frame_normalized(0).unwrap();
-        assert!(norm.iter().all(|&v| v >= 0.0 && v <= 1.0));
+        assert!(norm.iter().all(|&v| (0.0..=1.0).contains(&v)));
     }
 
     #[test]

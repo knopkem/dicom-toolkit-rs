@@ -47,7 +47,7 @@ impl ColorTransform {
 }
 
 /// Custom JPEG-LS coding parameters (T1, T2, T3, RESET, MAXVAL).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct JlsCustomParameters {
     pub max_val: i32,
     pub t1: i32,
@@ -81,18 +81,6 @@ impl Default for JlsParameters {
             interleave: InterleaveMode::None,
             color_transform: ColorTransform::None,
             custom: JlsCustomParameters::default(),
-        }
-    }
-}
-
-impl Default for JlsCustomParameters {
-    fn default() -> Self {
-        Self {
-            max_val: 0,
-            t1: 0,
-            t2: 0,
-            t3: 0,
-            reset: 0,
         }
     }
 }

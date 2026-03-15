@@ -28,10 +28,7 @@ pub struct FindRequest {
 /// Collects all pending C-FIND-RSP responses (status 0xFF00 / 0xFF01) and
 /// returns their encoded data set bytes.  The final success or failure status
 /// is silently consumed.
-pub async fn c_find(
-    assoc: &mut Association,
-    req: FindRequest,
-) -> DcmResult<Vec<Vec<u8>>> {
+pub async fn c_find(assoc: &mut Association, req: FindRequest) -> DcmResult<Vec<Vec<u8>>> {
     let msg_id = next_message_id();
 
     // Build C-FIND-RQ command dataset
@@ -91,10 +88,7 @@ mod tests {
     #[test]
     fn c_find_rq_command_build() {
         let mut cmd = DataSet::new();
-        cmd.set_uid(
-            tags::AFFECTED_SOP_CLASS_UID,
-            "1.2.840.10008.5.1.4.1.2.1.1",
-        );
+        cmd.set_uid(tags::AFFECTED_SOP_CLASS_UID, "1.2.840.10008.5.1.4.1.2.1.1");
         cmd.set_u16(tags::COMMAND_FIELD, 0x0020);
         cmd.set_u16(tags::MESSAGE_ID, 1);
         cmd.set_u16(tags::PRIORITY, 0);

@@ -35,15 +35,15 @@ pub enum PhotometricInterpretation {
 
 impl PhotometricInterpretation {
     /// Parse the DICOM string value of `(0028,0004)`.
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.trim() {
-            "MONOCHROME1"  => Self::Monochrome1,
-            "MONOCHROME2"  => Self::Monochrome2,
-            "RGB"          => Self::Rgb,
-            "YBR_FULL"     => Self::YbrFull,
+            "MONOCHROME1" => Self::Monochrome1,
+            "MONOCHROME2" => Self::Monochrome2,
+            "RGB" => Self::Rgb,
+            "YBR_FULL" => Self::YbrFull,
             "YBR_FULL_422" => Self::YbrFull422,
             "PALETTE COLOR" | "PALETTE_COLOR" => Self::PaletteColor,
-            other          => Self::Unknown(other.to_string()),
+            other => Self::Unknown(other.to_string()),
         }
     }
 
@@ -54,7 +54,10 @@ impl PhotometricInterpretation {
 
     /// Returns `true` if this is a color interpretation.
     pub fn is_color(&self) -> bool {
-        matches!(self, Self::Rgb | Self::YbrFull | Self::YbrFull422 | Self::PaletteColor)
+        matches!(
+            self,
+            Self::Rgb | Self::YbrFull | Self::YbrFull422 | Self::PaletteColor
+        )
     }
 }
 
@@ -66,13 +69,34 @@ mod tests {
 
     #[test]
     fn photometric_from_str() {
-        assert_eq!(PhotometricInterpretation::from_str("MONOCHROME1"), PhotometricInterpretation::Monochrome1);
-        assert_eq!(PhotometricInterpretation::from_str("MONOCHROME2"), PhotometricInterpretation::Monochrome2);
-        assert_eq!(PhotometricInterpretation::from_str("RGB"), PhotometricInterpretation::Rgb);
-        assert_eq!(PhotometricInterpretation::from_str("YBR_FULL"), PhotometricInterpretation::YbrFull);
-        assert_eq!(PhotometricInterpretation::from_str("YBR_FULL_422"), PhotometricInterpretation::YbrFull422);
-        assert_eq!(PhotometricInterpretation::from_str("PALETTE COLOR"), PhotometricInterpretation::PaletteColor);
-        assert!(matches!(PhotometricInterpretation::from_str("OTHER"), PhotometricInterpretation::Unknown(_)));
+        assert_eq!(
+            PhotometricInterpretation::parse("MONOCHROME1"),
+            PhotometricInterpretation::Monochrome1
+        );
+        assert_eq!(
+            PhotometricInterpretation::parse("MONOCHROME2"),
+            PhotometricInterpretation::Monochrome2
+        );
+        assert_eq!(
+            PhotometricInterpretation::parse("RGB"),
+            PhotometricInterpretation::Rgb
+        );
+        assert_eq!(
+            PhotometricInterpretation::parse("YBR_FULL"),
+            PhotometricInterpretation::YbrFull
+        );
+        assert_eq!(
+            PhotometricInterpretation::parse("YBR_FULL_422"),
+            PhotometricInterpretation::YbrFull422
+        );
+        assert_eq!(
+            PhotometricInterpretation::parse("PALETTE COLOR"),
+            PhotometricInterpretation::PaletteColor
+        );
+        assert!(matches!(
+            PhotometricInterpretation::parse("OTHER"),
+            PhotometricInterpretation::Unknown(_)
+        ));
     }
 
     #[test]

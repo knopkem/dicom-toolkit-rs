@@ -3,11 +3,11 @@
 //! Ports DCMTK's `DcmDataset` / `DcmItem`. Elements are kept in ascending
 //! tag order, matching the DICOM requirement for encoded files.
 
-use indexmap::IndexMap;
-use dicom_toolkit_dict::{Tag, Vr};
-use dicom_toolkit_core::error::{DcmError, DcmResult};
 use crate::element::Element;
 use crate::value::Value;
+use dicom_toolkit_core::error::{DcmError, DcmResult};
+use dicom_toolkit_dict::{Tag, Vr};
+use indexmap::IndexMap;
 
 /// A DICOM dataset: an ordered collection of data elements.
 ///
@@ -19,7 +19,9 @@ pub struct DataSet {
 
 impl DataSet {
     pub fn new() -> Self {
-        Self { elements: IndexMap::new() }
+        Self {
+            elements: IndexMap::new(),
+        }
     }
 
     // ── Core map operations ───────────────────────────────────────────────────
@@ -64,7 +66,7 @@ impl DataSet {
 
     /// Return the element for `tag`, or a [`DcmError::UnknownTag`] if absent.
     pub fn find_element(&self, tag: Tag) -> DcmResult<&Element> {
-        self.elements.get(&tag).ok_or_else(|| DcmError::UnknownTag {
+        self.elements.get(&tag).ok_or(DcmError::UnknownTag {
             group: tag.group,
             element: tag.element,
         })
@@ -181,19 +183,27 @@ mod tests {
     fn dataset_tag_order_ascending() {
         // Insert in reverse order; tags() should return in ascending order.
         let mut ds = DataSet::new();
-        ds.set_u16(tags::COLUMNS, 256);   // (0028,0011)
-        ds.set_u16(tags::ROWS, 512);       // (0028,0010)
+        ds.set_u16(tags::COLUMNS, 256); // (0028,0011)
+        ds.set_u16(tags::ROWS, 512); // (0028,0010)
         ds.set_string(tags::PATIENT_NAME, Vr::PN, "Doe^Jane"); // (0010,0010)
 
         let tags: Vec<Tag> = ds.tags().collect();
-        assert!(tags.windows(2).all(|w| w[0] < w[1]), "tags not in order: {:?}", tags);
+        assert!(
+            tags.windows(2).all(|w| w[0] < w[1]),
+            "tags not in order: {:?}",
+            tags
+        );
     }
 
     #[test]
     fn dataset_convenience_getters() {
         let mut ds = DataSet::new();
         ds.set_string(tags::PATIENT_ID, Vr::LO, "PID001");
-        ds.set_strings(tags::IMAGE_TYPE, Vr::CS, vec!["ORIGINAL".into(), "PRIMARY".into()]);
+        ds.set_strings(
+            tags::IMAGE_TYPE,
+            Vr::CS,
+            vec!["ORIGINAL".into(), "PRIMARY".into()],
+        );
         ds.set_u16(tags::ROWS, 512);
         ds.set_u32(Tag::new(0x0028, 0x0000), 42);
         ds.set_i32(Tag::new(0x0020, 0x0013), -1);
@@ -206,7 +216,10 @@ mod tests {
         assert_eq!(ds.get_u32(Tag::new(0x0028, 0x0000)), Some(42));
         assert_eq!(ds.get_i32(Tag::new(0x0020, 0x0013)), Some(-1));
         assert!((ds.get_f64(Tag::new(0x0028, 0x1050)).unwrap() - 1024.0).abs() < 1e-9);
-        assert_eq!(ds.get_string(tags::SOP_CLASS_UID), Some("1.2.840.10008.1.1"));
+        assert_eq!(
+            ds.get_string(tags::SOP_CLASS_UID),
+            Some("1.2.840.10008.1.1")
+        );
     }
 
     #[test]
@@ -214,7 +227,10 @@ mod tests {
         let mut ds = DataSet::new();
         let data = vec![0u8, 1, 2, 3];
         ds.set_bytes(Tag::new(0x0042, 0x0011), Vr::OB, data.clone());
-        assert_eq!(ds.get_bytes(Tag::new(0x0042, 0x0011)), Some(data.as_slice()));
+        assert_eq!(
+            ds.get_bytes(Tag::new(0x0042, 0x0011)),
+            Some(data.as_slice())
+        );
     }
 
     #[test]

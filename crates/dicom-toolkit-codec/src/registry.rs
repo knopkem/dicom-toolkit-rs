@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, RwLock};
 
 use dicom_toolkit_core::error::{DcmError, DcmResult};
-use dicom_toolkit_dict::ts::transfer_syntaxes;
 use dicom_toolkit_data::value::PixelData;
+use dicom_toolkit_dict::ts::transfer_syntaxes;
 
 // ── ImageCodec trait ──────────────────────────────────────────────────────────
 
@@ -87,13 +87,8 @@ impl ImageCodec for RleCodec {
         samples_per_pixel: u8,
         bits_allocated: u8,
     ) -> DcmResult<PixelData> {
-        let encoded = crate::rle::rle_encode_frame(
-            pixels,
-            rows,
-            columns,
-            samples_per_pixel,
-            bits_allocated,
-        )?;
+        let encoded =
+            crate::rle::rle_encode_frame(pixels, rows, columns, samples_per_pixel, bits_allocated)?;
         Ok(PixelData::Encapsulated {
             offset_table: vec![0],
             fragments: vec![encoded],
@@ -255,9 +250,10 @@ impl CodecRegistry {
 
     /// Look up a codec or return a [`DcmError::NoCodec`] error.
     pub fn find_required(&self, transfer_syntax_uid: &str) -> DcmResult<Arc<dyn ImageCodec>> {
-        self.find(transfer_syntax_uid).ok_or_else(|| DcmError::NoCodec {
-            uid: transfer_syntax_uid.to_string(),
-        })
+        self.find(transfer_syntax_uid)
+            .ok_or_else(|| DcmError::NoCodec {
+                uid: transfer_syntax_uid.to_string(),
+            })
     }
 }
 
@@ -338,7 +334,9 @@ pub fn decode_pixel_data(
         {
             crate::jpeg_ls::JpegLsCodec::decode_frame(data).map(|f| f.pixels)
         }
-        uid => Err(DcmError::NoCodec { uid: uid.to_string() }),
+        uid => Err(DcmError::NoCodec {
+            uid: uid.to_string(),
+        }),
     }
 }
 
@@ -412,7 +410,7 @@ mod tests {
 
     #[test]
     fn rle_codec_roundtrip_via_registry() {
-        use crate::rle::{rle_encode_frame};
+        use crate::rle::rle_encode_frame;
 
         let rows = 4u16;
         let cols = 4u16;
@@ -426,8 +424,12 @@ mod tests {
             fragments: vec![encoded_frame],
         };
 
-        let codec = GLOBAL_REGISTRY.find(transfer_syntaxes::RLE_LOSSLESS.uid).unwrap();
-        let decoded = codec.decode(&pixel_data, rows, cols, samples, bits).unwrap();
+        let codec = GLOBAL_REGISTRY
+            .find(transfer_syntaxes::RLE_LOSSLESS.uid)
+            .unwrap();
+        let decoded = codec
+            .decode(&pixel_data, rows, cols, samples, bits)
+            .unwrap();
         assert_eq!(&decoded[..16], &pixels[..]);
     }
 }

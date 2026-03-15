@@ -2,8 +2,8 @@
 //!
 //! Encodes raw pixel data to a JPEG fragment for DICOM encapsulated storage.
 
-use jpeg_encoder::{ColorType, Encoder, SamplingFactor};
 use dicom_toolkit_core::error::{DcmError, DcmResult};
+use jpeg_encoder::{ColorType, Encoder};
 
 use super::params::JpegParams;
 
@@ -39,7 +39,9 @@ pub fn encode_jpeg(
     }
 
     enc.encode(pixels, width, height, color_type)
-        .map_err(|e| DcmError::CompressionError { reason: format!("JPEG encode error: {e}") })?;
+        .map_err(|e| DcmError::CompressionError {
+            reason: format!("JPEG encode error: {e}"),
+        })?;
 
     Ok(buf)
 }
@@ -77,7 +79,16 @@ mod tests {
         use crate::jpeg::decoder::decode_jpeg;
 
         let pixels: Vec<u8> = (0u8..=255).collect();
-        let result = encode_jpeg(&pixels, 16, 16, 1, &JpegParams { quality: 100, ..Default::default() });
+        let result = encode_jpeg(
+            &pixels,
+            16,
+            16,
+            1,
+            &JpegParams {
+                quality: 100,
+                ..Default::default()
+            },
+        );
         let bytes = result.unwrap();
 
         let frame = decode_jpeg(&bytes).unwrap();

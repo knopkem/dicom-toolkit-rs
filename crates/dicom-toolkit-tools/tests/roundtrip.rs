@@ -3,7 +3,7 @@
 use tempfile::NamedTempFile;
 
 use dicom_toolkit_data::{DataSet, Element, FileFormat};
-use dicom_toolkit_dict::{Vr, tags};
+use dicom_toolkit_dict::{tags, Vr};
 
 // ── File roundtrip ────────────────────────────────────────────────────────────
 
@@ -17,18 +17,17 @@ fn roundtrip_dicom_file() {
     ds.set_u16(tags::ROWS, 128);
     ds.set_u16(tags::COLUMNS, 128);
 
-    let ff = FileFormat::from_dataset(
-        "1.2.840.10008.5.1.4.1.1.2",
-        "1.2.3.4.5.6.7",
-        ds,
-    );
+    let ff = FileFormat::from_dataset("1.2.840.10008.5.1.4.1.1.2", "1.2.3.4.5.6.7", ds);
 
     let tmp = NamedTempFile::new().unwrap();
     ff.save(tmp.path()).unwrap();
 
     let ff2 = FileFormat::open(tmp.path()).unwrap();
 
-    assert_eq!(ff2.dataset.get_string(tags::PATIENT_NAME), Some("Test^Patient"));
+    assert_eq!(
+        ff2.dataset.get_string(tags::PATIENT_NAME),
+        Some("Test^Patient")
+    );
     assert_eq!(ff2.dataset.get_string(tags::PATIENT_ID), Some("TEST-001"));
     assert_eq!(ff2.dataset.get_u16(tags::ROWS), Some(128));
     assert_eq!(ff2.dataset.get_u16(tags::COLUMNS), Some(128));
@@ -86,11 +85,7 @@ fn roundtrip_multiple_numeric_vrs() {
     ds.set_u16(tags::HIGH_BIT, 11);
     ds.set_u16(tags::PIXEL_REPRESENTATION, 0);
 
-    let ff = FileFormat::from_dataset(
-        "1.2.840.10008.5.1.4.1.1.2",
-        "9.8.7.6.5.4.3.2.1",
-        ds,
-    );
+    let ff = FileFormat::from_dataset("1.2.840.10008.5.1.4.1.1.2", "9.8.7.6.5.4.3.2.1", ds);
     let tmp = NamedTempFile::new().unwrap();
     ff.save(tmp.path()).unwrap();
 
@@ -178,17 +173,16 @@ fn roundtrip_file_format_in_memory() {
     ds.set_string(tags::STUDY_DESCRIPTION, Vr::LO, "Test Study");
     ds.set_u16(tags::SERIES_NUMBER, 1);
 
-    let ff = FileFormat::from_dataset(
-        "1.2.840.10008.5.1.4.1.1.2",
-        "1.1.1.1.1",
-        ds,
-    );
+    let ff = FileFormat::from_dataset("1.2.840.10008.5.1.4.1.1.2", "1.1.1.1.1", ds);
 
     let mut buf = Vec::new();
     DicomWriter::new(&mut buf).write_file(&ff).unwrap();
 
     let ff2 = DicomReader::new(buf.as_slice()).read_file().unwrap();
-    assert_eq!(ff2.dataset.get_string(tags::STUDY_DESCRIPTION), Some("Test Study"));
+    assert_eq!(
+        ff2.dataset.get_string(tags::STUDY_DESCRIPTION),
+        Some("Test Study")
+    );
     assert_eq!(ff2.dataset.get_u16(tags::SERIES_NUMBER), Some(1));
     assert_eq!(
         ff2.meta.transfer_syntax_uid.trim_end_matches('\0'),

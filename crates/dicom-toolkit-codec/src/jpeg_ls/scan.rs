@@ -21,8 +21,11 @@ const NUM_CONTEXTS: usize = 365;
 pub struct ScanDecoder<'a> {
     reader: BitReader<'a>,
     traits: DerivedTraits,
+    #[allow(dead_code)]
     t1: i32,
+    #[allow(dead_code)]
     t2: i32,
+    #[allow(dead_code)]
     t3: i32,
     width: usize,
     height: usize,
@@ -92,8 +95,8 @@ impl<'a> ScanDecoder<'a> {
             self.decode_line(&prev_line, &mut curr_line, w)?;
 
             // Copy decoded pixels to output (indices 1..=w).
-            for i in 1..=w {
-                output.push(curr_line[i]);
+            for val in curr_line.iter().take(w + 1).skip(1) {
+                output.push(*val);
             }
 
             // Swap lines.
@@ -152,9 +155,9 @@ impl<'a> ScanDecoder<'a> {
         let ctx = &mut self.contexts[ctx_idx];
 
         let k = ctx.get_golomb();
-        let px = self
-            .traits
-            .correct_prediction(get_predicted_value(ra, rb, rc) + apply_sign(ctx.c as i32, sign_val));
+        let px = self.traits.correct_prediction(
+            get_predicted_value(ra, rb, rc) + apply_sign(ctx.c as i32, sign_val),
+        );
 
         // Decode the error value.
         let mapped_err =
@@ -277,8 +280,7 @@ impl<'a> ScanDecoder<'a> {
         let k = ctx.get_golomb();
         let limit = self.traits.limit - J[self.run_index] - 1;
 
-        let em_err_val =
-            golomb::decode_mapped_value(&mut self.reader, k, limit, self.traits.qbpp)?;
+        let em_err_val = golomb::decode_mapped_value(&mut self.reader, k, limit, self.traits.qbpp)?;
 
         let ctx = &mut self.run_contexts[ctx_idx];
         let ri_type = ctx.ri_type;
@@ -294,11 +296,7 @@ fn compute_ri_err_val(temp: i32, k: i32, ctx: &RunModeContext) -> i32 {
     let map = temp & 1;
     let err_abs = (temp + map) / 2;
 
-    let condition = if k != 0 || 2 * ctx.nn >= ctx.n {
-        1
-    } else {
-        0
-    };
+    let condition = if k != 0 || 2 * ctx.nn >= ctx.n { 1 } else { 0 };
 
     if condition == map {
         -err_abs
@@ -313,8 +311,11 @@ fn compute_ri_err_val(temp: i32, k: i32, ctx: &RunModeContext) -> i32 {
 pub struct ScanEncoder {
     writer: BitWriter,
     traits: DerivedTraits,
+    #[allow(dead_code)]
     t1: i32,
+    #[allow(dead_code)]
     t2: i32,
+    #[allow(dead_code)]
     t3: i32,
     width: usize,
     height: usize,
@@ -438,28 +439,20 @@ impl ScanEncoder {
         Ok(())
     }
 
-    fn do_regular_encode(
-        &mut self,
-        qs: i32,
-        x: i32,
-        ra: i32,
-        rb: i32,
-        rc: i32,
-    ) -> DcmResult<i32> {
+    fn do_regular_encode(&mut self, qs: i32, x: i32, ra: i32, rb: i32, rc: i32) -> DcmResult<i32> {
         let sign_val = bitwise_sign(qs);
         let ctx_idx = apply_sign(qs, sign_val) as usize;
         let ctx = &mut self.contexts[ctx_idx];
 
         let k = ctx.get_golomb();
-        let px = self
-            .traits
-            .correct_prediction(get_predicted_value(ra, rb, rc) + apply_sign(ctx.c as i32, sign_val));
+        let px = self.traits.correct_prediction(
+            get_predicted_value(ra, rb, rc) + apply_sign(ctx.c as i32, sign_val),
+        );
 
         let err_val = self.traits.compute_error_val(apply_sign(x - px, sign_val));
 
-        let mapped_err = golomb::get_mapped_err_val(
-            ctx.get_error_correction(k | self.traits.near) ^ err_val,
-        );
+        let mapped_err =
+            golomb::get_mapped_err_val(ctx.get_error_correction(k | self.traits.near) ^ err_val);
         golomb::encode_mapped_value(
             &mut self.writer,
             k,
@@ -530,8 +523,7 @@ impl ScanEncoder {
                 self.writer.append_ones(1);
             }
         } else {
-            self.writer
-                .append(run_length, J[self.run_index] + 1);
+            self.writer.append(run_length, J[self.run_index] + 1);
         }
     }
 
