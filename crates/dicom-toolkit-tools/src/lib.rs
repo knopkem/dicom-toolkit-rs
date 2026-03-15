@@ -1,1 +1,3 @@
-//! dcmtk-tools: CLI utilities for DICOM (dcmdump, echoscu, storescu, storescp, findscu).
+//! Shared helpers for the `dicom-toolkit-tools` CLI binaries.
+
+pub mod query_retrieve;

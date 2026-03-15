@@ -220,14 +220,14 @@ fn build_code_blocks(
             );
 
             let start = storage.layers.len();
-            storage.layers.extend(iter::repeat_n(
-                Layer {
+            storage.layers.extend(
+                iter::repeat(Layer {
                     // This will be updated once we actually read the
                     // layer segments.
                     segments: None,
-                },
-                tile.num_layers as usize,
-            ));
+                })
+                .take(tile.num_layers as usize),
+            );
             let end = storage.layers.len();
 
             storage.code_blocks.push(CodeBlock {

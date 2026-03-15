@@ -52,6 +52,9 @@ pub struct ReceivedInstance {
     pub sop_class_uid: String,
     /// SOP Instance UID of the received instance.
     pub sop_instance_uid: String,
+    /// Transfer Syntax UID negotiated for the C-STORE sub-operation that
+    /// delivered this dataset.
+    pub transfer_syntax_uid: String,
     /// Raw encoded dataset bytes (use `DicomReader::read_dataset` to decode).
     pub dataset: Vec<u8>,
 }
@@ -114,11 +117,16 @@ pub async fn c_get(assoc: &mut Association, req: GetRequest) -> DcmResult<GetRes
                     .trim_end_matches('\0')
                     .to_string();
                 let store_msg_id = rsp_cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
+                let transfer_syntax_uid = assoc
+                    .context_by_id(ctx_id)
+                    .map(|pc| pc.transfer_syntax.trim_end_matches('\0').to_string())
+                    .unwrap_or_else(|| TS_EXPLICIT_LE.to_string());
 
                 let data = assoc.recv_dimse_data().await?;
                 instances.push(ReceivedInstance {
                     sop_class_uid: sop_class.clone(),
                     sop_instance_uid: sop_instance.clone(),
+                    transfer_syntax_uid,
                     dataset: data,
                 });
 

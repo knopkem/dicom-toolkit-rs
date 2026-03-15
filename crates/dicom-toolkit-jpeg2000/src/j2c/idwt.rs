@@ -111,7 +111,7 @@ pub(crate) fn apply(
 
     // Determine which buffer we should use first, such that the `coefficients`
     // array will always hold the final values.
-    let mut use_scratch = decompositions.len().is_multiple_of(2);
+    let mut use_scratch = decompositions.len() % 2 == 0;
 
     let mut temp_output = filter_2d(
         IDWTInput::from_sub_band(ll_sub_band, storage),
@@ -359,7 +359,7 @@ fn filter_horizontal(coefficients: &mut [f32], rect: IntRect, transform: Wavelet
 /// The `1D_SR` procedure from F.3.6.
 fn filter_row(scanline: &mut [f32], width: usize, x0: usize, transform: WaveletTransform) {
     if width == 1 {
-        if !x0.is_multiple_of(2) {
+        if x0 % 2 != 0 {
             scanline[0] *= 0.5;
         }
 
@@ -575,7 +575,7 @@ fn filter_vertical_impl<S: Simd>(
     let y0 = rect.y0 as usize;
 
     if height == 1 {
-        if !y0.is_multiple_of(2) {
+        if y0 % 2 != 0 {
             let simd_width = width / SIMD_WIDTH * SIMD_WIDTH;
             for base_column in (0..simd_width).step_by(SIMD_WIDTH) {
                 let mut loaded = f32x8::from_slice(simd, &scanline[base_column..][..SIMD_WIDTH]);

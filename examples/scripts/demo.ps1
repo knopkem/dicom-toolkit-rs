@@ -54,7 +54,7 @@ Banner "02 · echoscu + storescu + storescp  -  network transfer"
 MaybePause
 
 # ── 03: query ────────────────────────────────────────────────────────────────
-Banner "03 · findscu  -  C-FIND query examples"
+Banner "03 · findscu / getscu  -  Query/Retrieve examples"
 & "$ScriptDir\03_query.ps1"
 MaybePause
 

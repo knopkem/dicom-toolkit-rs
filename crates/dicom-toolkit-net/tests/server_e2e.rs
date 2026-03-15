@@ -375,6 +375,12 @@ async fn test_server_get_loopback() {
 
     assert_eq!(result.instances.len(), 1, "expected 1 instance received");
     assert_eq!(result.instances[0].sop_instance_uid, "1.2.3.server.get.1");
+    assert_eq!(
+        result.instances[0]
+            .transfer_syntax_uid
+            .trim_end_matches('\0'),
+        TS_EXPLICIT_LE
+    );
     let final_rsp = result.responses.last().unwrap();
     assert_eq!(
         final_rsp.status & 0xFF00,

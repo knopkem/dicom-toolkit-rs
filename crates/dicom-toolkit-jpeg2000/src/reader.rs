@@ -19,7 +19,7 @@ impl<'a> BitReader<'a> {
     pub(crate) fn align(&mut self) {
         let bit_pos = self.bit_pos();
 
-        if !bit_pos.is_multiple_of(8) {
+        if bit_pos % 8 != 0 {
             self.cur_pos += 8 - bit_pos;
         }
     }

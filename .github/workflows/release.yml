@@ -62,7 +62,7 @@ jobs:
       - name: Strip binaries (Unix)
         if: runner.os != 'Windows' && !matrix.cross
         run: |
-          for bin in dcmdump echoscu storescu storescp findscu img2dcm dcmcjpls dcmdjpls dcmcjp2k dcmdjp2k; do
+          for bin in dcmdump echoscu storescu storescp findscu getscu img2dcm dcmcjpls dcmdjpls dcmcjp2k dcmdjp2k; do
             strip "target/${{ matrix.target }}/release/${bin}" 2>/dev/null || true
           done
 
@@ -72,7 +72,7 @@ jobs:
         run: |
           STAGING="dicom-toolkit-${{ github.ref_name }}-${{ matrix.target }}"
           mkdir -p "${STAGING}"
-          for bin in dcmdump echoscu storescu storescp findscu img2dcm dcmcjpls dcmdjpls dcmcjp2k dcmdjp2k; do
+          for bin in dcmdump echoscu storescu storescp findscu getscu img2dcm dcmcjpls dcmdjpls dcmcjp2k dcmdjp2k; do
             cp "target/${{ matrix.target }}/release/${bin}" "${STAGING}/"
           done
           cp LICENSE-MIT LICENSE-APACHE NOTICE README.md "${STAGING}/"
@@ -86,7 +86,7 @@ jobs:
         run: |
           $staging = "dicom-toolkit-${{ github.ref_name }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $staging
-          $bins = @("dcmdump", "echoscu", "storescu", "storescp", "findscu", "img2dcm", "dcmcjpls", "dcmdjpls", "dcmcjp2k", "dcmdjp2k")
+          $bins = @("dcmdump", "echoscu", "storescu", "storescp", "findscu", "getscu", "img2dcm", "dcmcjpls", "dcmdjpls", "dcmcjp2k", "dcmdjp2k")
           foreach ($bin in $bins) {
             Copy-Item "target/${{ matrix.target }}/release/${bin}.exe" $staging
           }
@@ -146,6 +146,7 @@ jobs:
             | `storescu` | DICOM C-STORE SCU (send files) |
             | `storescp` | DICOM C-STORE SCP (receive files) |
             | `findscu` | DICOM C-FIND SCU (query) |
+            | `getscu` | DICOM C-GET SCU (retrieve files) |
             | `img2dcm` | Convert PNG images to DICOM |
             | `dcmcjpls` | Compress DICOM with JPEG-LS |
             | `dcmdjpls` | Decompress JPEG-LS DICOM files |

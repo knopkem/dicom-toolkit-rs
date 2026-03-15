@@ -448,6 +448,18 @@ async fn test_get_loopback() {
     assert_eq!(result.instances.len(), 2, "should receive 2 instances");
     assert_eq!(result.instances[0].sop_instance_uid, "1.2.3.101");
     assert_eq!(result.instances[1].sop_instance_uid, "1.2.3.102");
+    assert_eq!(
+        result.instances[0]
+            .transfer_syntax_uid
+            .trim_end_matches('\0'),
+        TS_EXPLICIT_LE
+    );
+    assert_eq!(
+        result.instances[1]
+            .transfer_syntax_uid
+            .trim_end_matches('\0'),
+        TS_EXPLICIT_LE
+    );
 
     let ds0 = decode_dataset(&result.instances[0].dataset);
     let ds1 = decode_dataset(&result.instances[1].dataset);

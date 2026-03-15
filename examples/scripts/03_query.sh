@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# 03_query.sh — findscu showcase
+# 03_query.sh — findscu / getscu showcase
 #
-# Starts a Storage SCP, sends the 5 ABDOM files, then queries with findscu.
-# (findscu requires a Query/Retrieve SCP; real-world usage would target a PACS.)
+# Shows command-line patterns for C-FIND and C-GET against a Query/Retrieve SCP.
 #
-# Note: storescp in dicom-toolkit-rs only handles C-STORE, not C-FIND.  This script
-# shows the findscu command-line interface against a real external SCP.
 # If you have Orthanc or another PACS running locally, adjust HOST/PORT below.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$SCRIPT_DIR/../.."
 FINDSCU="$ROOT/target/debug/findscu"
-STORESCU="$ROOT/target/debug/storescu"
-STORESCP="$ROOT/target/debug/storescp"
-FILES="$SCRIPT_DIR/../testfiles"
+GETSCU="$ROOT/target/debug/getscu"
 
 if [[ ! -x "$FINDSCU" ]]; then
   echo "Binary not found — run:  cargo build --bins"
   exit 1
 fi
 
+if [[ ! -x "$GETSCU" ]]; then
+  echo "Binary not found — run:  cargo build --bins"
+  exit 1
+fi
+
 # ─────────────────────────────────────────────
 echo "════════════════════════════════════════════════════════════"
-echo " findscu — C-FIND query examples"
+echo " findscu / getscu — Query/Retrieve examples"
 echo "════════════════════════════════════════════════════════════"
 echo ""
 echo " The following commands show common C-FIND patterns."
@@ -63,6 +63,14 @@ echo "  findscu -L STUDY -k '0008,0060=CT' -k '0008,0020=19960101-19971231' \\"
 echo "          $PACS_HOST $PACS_PORT"
 echo ""
 
+echo "────────────────────────────────────────────────────────────"
+echo " Example 5: Retrieve a study with C-GET"
+echo "────────────────────────────────────────────────────────────"
+echo "Command:"
+echo "  getscu -d retrieved -L STUDY -k '0020,000D=<StudyInstanceUID>' \\"
+echo "         $PACS_HOST $PACS_PORT"
+echo ""
+
 # If PACS is reachable (skip by default so this script always exits 0)
 if [[ "${RUN_LIVE:-0}" == "1" ]]; then
   echo "════════════════════════════════════════════════════════════"
@@ -73,6 +81,8 @@ if [[ "${RUN_LIVE:-0}" == "1" ]]; then
     -L STUDY \
     -k "0010,0010=" \
     "$PACS_HOST" "$PACS_PORT"
+  echo ""
+  echo "(getscu is not executed automatically; use the Example 5 command above to retrieve files.)"
 else
   echo "(Set RUN_LIVE=1 to execute queries against $PACS_HOST:$PACS_PORT)"
 fi

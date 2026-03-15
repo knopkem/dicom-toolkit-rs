@@ -38,7 +38,7 @@ bash "$SCRIPT_DIR/02_network.sh"
 pause
 
 # ─── 03: query ────────────────────────────────────────────────────────────────
-banner "03 · findscu — C-FIND query examples"
+banner "03 · findscu / getscu — Query/Retrieve examples"
 bash "$SCRIPT_DIR/03_query.sh"
 pause
 

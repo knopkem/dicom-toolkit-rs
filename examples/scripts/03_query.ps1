@@ -1,6 +1,6 @@
-# 03_query.ps1  -  findscu showcase
+# 03_query.ps1  -  findscu / getscu showcase
 #
-# Shows findscu command-line patterns for C-FIND queries.
+# Shows command-line patterns for C-FIND and C-GET queries.
 # Set $env:PACS_HOST / $env:PACS_PORT to query a real SCP,
 # or set $env:RUN_LIVE = "1" to execute the live query.
 #
@@ -13,9 +13,13 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root      = Resolve-Path (Join-Path $ScriptDir '..\..')
 $Ext       = if (($env:OS -eq 'Windows_NT') -or ((Test-Path variable:IsWindows) -and $IsWindows)) { '.exe' } else { '' }
 $Findscu   = Join-Path $Root "target\debug\findscu$Ext"
+$Getscu    = Join-Path $Root "target\debug\getscu$Ext"
 
 if (-not (Test-Path $Findscu)) {
     Write-Error "Binary not found: $Findscu`nRun: cargo build --bins"
+}
+if (-not (Test-Path $Getscu)) {
+    Write-Error "Binary not found: $Getscu`nRun: cargo build --bins"
 }
 
 $PacsHost = if ($env:PACS_HOST) { $env:PACS_HOST } else { 'localhost' }
@@ -34,7 +38,7 @@ function Example($label, $cmd) {
     Write-Host "  $cmd" -ForegroundColor White
 }
 
-Banner "findscu  -  C-FIND query examples"
+Banner "findscu / getscu  -  Query/Retrieve examples"
 Write-Host ""
 Write-Host " Set `$env:PACS_HOST / `$env:PACS_PORT to target a running QR SCP."
 
@@ -50,9 +54,14 @@ Example "Example 3: Find series within a study" `
 Example "Example 4: Find CT studies in a date range" `
     "findscu -L STUDY -k '0008,0060=CT' -k '0008,0020=19960101-19971231' ${PacsHost} ${PacsPort}"
 
+Example "Example 5: Retrieve a study with C-GET" `
+    "getscu -d retrieved -L STUDY -k '0020,000D=<StudyInstanceUID>' ${PacsHost} ${PacsPort}"
+
 if ($env:RUN_LIVE -eq '1') {
     Banner "LIVE query against ${PacsHost}:${PacsPort}"
     & $Findscu -v -a FINDSCU -c ANY-SCP -L STUDY -k '0010,0010=' $PacsHost $PacsPort
+    Write-Host ""
+    Write-Host "(getscu is not executed automatically; use Example 5 to retrieve files.)" -ForegroundColor DarkGray
 } else {
     Write-Host ""
     Write-Host "(Set `$env:RUN_LIVE='1' to execute queries against ${PacsHost}:${PacsPort})" -ForegroundColor DarkGray

@@ -8,7 +8,7 @@ A pure-Rust port of [DCMTK](https://dicom.offis.de/dcmtk.php.en) 3.7.0 — a com
 
 This is an independent project, not affiliated with or endorsed by OFFIS e.V. See [NOTICE](NOTICE) for attribution details.
 
-[![Tests](https://img.shields.io/badge/tests-487%20passing-brightgreen)](#status)
+[![Tests](https://img.shields.io/badge/tests-488%20passing-brightgreen)](#status)
 
 ---
 
@@ -20,8 +20,8 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 | 2 — Data model & I/O | `dicom-toolkit-data` | 153 |
 | 3 — Networking | `dicom-toolkit-net` | 59 |
 | 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec`, `dicom-toolkit-jpeg2000` | 44 + 89 + 46 |
-| Tools | `dicom-toolkit-tools` | 9 integration |
-| **Total** | | **481 unit/integration + 6 doctests = 487 passing, 0 failed** |
+| Tools | `dicom-toolkit-tools` | 10 integration |
+| **Total** | | **482 unit/integration + 6 doctests = 488 passing, 0 failed** |
 
 ---
 
@@ -35,7 +35,7 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 | [`dicom-toolkit-net`](crates/dicom-toolkit-net) | `dcmnet`, `dcmtls` | Async DICOM networking: PDU layer, association, C-ECHO/STORE/FIND/GET/MOVE, TLS |
 | [`dicom-toolkit-image`](crates/dicom-toolkit-image) | `dcmimgle`, `dcmimage` | Pixel pipeline, Modality/VOI LUT, window/level, overlays, color models, PNG export |
 | [`dicom-toolkit-codec`](crates/dicom-toolkit-codec) | `dcmjpeg`, `dcmjpls`, `dcmrle`, `dcmjp2k` | JPEG baseline, **pure-Rust JPEG-LS**, **pure-Rust JPEG 2000** (lossless & lossy), RLE PackBits, codec registry |
-| [`dicom-toolkit-tools`](crates/dicom-toolkit-tools) | `dcmdump`, `echoscu`, etc. | CLI utilities: dump, network SCU/SCP, img2dcm, JPEG-LS/JPEG 2000 compress/decompress (see below) |
+| [`dicom-toolkit-tools`](crates/dicom-toolkit-tools) | `dcmdump`, `echoscu`, etc. | CLI utilities: dump, network SCU/SCP including `getscu`, img2dcm, JPEG-LS/JPEG 2000 compress/decompress (see below) |
 | [`dicom-toolkit-jpeg2000`](crates/dicom-toolkit-jpeg2000) | internal/published fork | Pure-Rust JPEG 2000 engine used by `dicom-toolkit-codec`; published fork with native-bit-depth decode plus DICOM-focused encoder |
 
 ---
@@ -329,6 +329,34 @@ findscu -L PATIENT -k "0010,0010=" -k "0008,0020=20240101" localhost 4242
 
 ---
 
+### `getscu` — retrieve with C-GET
+
+```
+getscu [OPTIONS] <HOST> <PORT>
+
+Options:
+  -a, --aetitle <AE>        Calling AE title [default: GETSCU]
+  -c, --called-ae <AE>      Called AE title [default: ANY-SCP]
+  -d, --output-dir <DIR>    Directory for retrieved DICOM files [default: .]
+  -k, --key <TAG=VALUE>     Query key (repeatable)
+  -L, --level <LEVEL>       Query/retrieve level [default: STUDY]
+  -v, --verbose             Verbose output
+```
+
+**Examples**
+
+```bash
+# Retrieve all instances for a study into ./retrieved
+getscu -d retrieved -L STUDY -k "0020,000D=1.2.3.4.5" pacs.example.com 11112
+
+# Retrieve matching series from a local PACS
+getscu -a MY_SCU -c ORTHANC -d out -L SERIES -k "0020,000E=1.2.3.4.5.6" localhost 4242
+```
+
+Retrieved objects are written as DICOM Part 10 files named after their SOP Instance UID.
+
+---
+
 ### `img2dcm` — convert PNG to DICOM
 
 ```
@@ -476,7 +504,7 @@ Ready-to-run scripts live in [`examples/scripts/`](examples/scripts/) and use th
 |--------|---------------------|
 | `01_dump` | All `dcmdump` output modes: plain, `--meta`, `--no-limit`, `--json`, `--xml`, multi-file batch |
 | `02_network` | Start `storescp` → C-ECHO verify with `echoscu` → send all 5 slices with `storescu` → inspect received files |
-| `03_query` | `findscu` command patterns; set `RUN_LIVE=1` / `$env:RUN_LIVE='1'` to query a real PACS |
+| `03_query` | `findscu` and `getscu` command patterns; set `RUN_LIVE=1` / `$env:RUN_LIVE='1'` to query a real PACS |
 | `04_img2dcm` | Generate a PNG with Python stdlib → wrap as Secondary Capture → dump + JSON export |
 | `05_jpegls` | JPEG-LS lossless & near-lossless round-trip, batch compress/decompress, metadata verification |
 | `06_jp2k` | JPEG 2000 lossless round-trip, lossy smoke test, batch compress/decompress, metadata verification |
@@ -524,7 +552,7 @@ pwsh -File examples/scripts/06_jp2k.ps1
 
 The PowerShell scripts also work on macOS and Linux with [PowerShell Core](https://github.com/PowerShell/PowerShell).
 
-> **Note:** `03_query` shows command-line patterns but does not execute live queries by default. The `storescp` binary now uses the `DicomServer` framework. C-FIND, C-GET, and C-MOVE SCP handling is available in-process via the library; see [DicomServer](#dicomserver) below. Set `RUN_LIVE=1` to use an external Orthanc instance with the query scripts.
+> **Note:** `03_query` shows command-line patterns but does not execute live retrievals by default. The `storescp` binary now uses the `DicomServer` framework. C-FIND, C-GET, and C-MOVE SCP handling is available in-process via the library; see [DicomServer](#dicomserver) below. Set `RUN_LIVE=1` to use an external Orthanc instance with the query scripts.
 
 ---
 

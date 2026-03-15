@@ -6,21 +6,12 @@ use std::process;
 
 use clap::Parser;
 
-use dicom_toolkit_core::error::DcmResult;
-use dicom_toolkit_data::value::Value;
-use dicom_toolkit_data::{DataSet, DicomReader, DicomWriter};
-use dicom_toolkit_dict::{tags, Vr};
-use dicom_toolkit_net::{
-    c_find, Association, AssociationConfig, FindRequest, PresentationContextRq,
+use dicom_toolkit_data::DicomWriter;
+use dicom_toolkit_net::{c_find, Association, AssociationConfig, FindRequest};
+use dicom_toolkit_tools::query_retrieve::{
+    accepted_transfer_syntax, build_query, decode_dataset_with_fallback, print_dataset,
+    qr_find_contexts, select_accepted_context, TS_EXPLICIT_VR_LE,
 };
-
-// Study Root Query/Retrieve - FIND SOP class
-const STUDY_ROOT_FIND: &str = "1.2.840.10008.5.1.4.1.2.2.1";
-// Patient Root Query/Retrieve - FIND SOP class
-const PATIENT_ROOT_FIND: &str = "1.2.840.10008.5.1.4.1.2.1.1";
-
-const TS_EXPLICIT_VR_LE: &str = "1.2.840.10008.1.2.1";
-const TS_IMPLICIT_VR_LE: &str = "1.2.840.10008.1.2";
 
 #[derive(Parser)]
 #[command(
@@ -83,18 +74,7 @@ async fn main() {
         );
     }
 
-    let contexts = vec![
-        PresentationContextRq {
-            id: 1,
-            abstract_syntax: STUDY_ROOT_FIND.to_string(),
-            transfer_syntaxes: vec![TS_EXPLICIT_VR_LE.to_string(), TS_IMPLICIT_VR_LE.to_string()],
-        },
-        PresentationContextRq {
-            id: 3,
-            abstract_syntax: PATIENT_ROOT_FIND.to_string(),
-            transfer_syntaxes: vec![TS_EXPLICIT_VR_LE.to_string(), TS_IMPLICIT_VR_LE.to_string()],
-        },
-    ];
+    let contexts = qr_find_contexts();
 
     let config = AssociationConfig {
         local_ae_title: args.aetitle.clone(),
@@ -112,15 +92,14 @@ async fn main() {
         };
 
     // Prefer Study Root; fall back to Patient Root
-    let ctx_id = match assoc
-        .find_context(STUDY_ROOT_FIND)
-        .filter(|pc| pc.result.is_accepted())
-        .or_else(|| {
-            assoc
-                .find_context(PATIENT_ROOT_FIND)
-                .filter(|pc| pc.result.is_accepted())
-        }) {
-        Some(pc) => pc.id,
+    let (ctx_id, sop_class_uid) = match select_accepted_context(
+        &assoc,
+        &[
+            dicom_toolkit_core::uid::sop_class::STUDY_ROOT_QR_FIND,
+            dicom_toolkit_core::uid::sop_class::PATIENT_ROOT_QR_FIND,
+        ],
+    ) {
+        Some(selection) => selection,
         None => {
             eprintln!("No Q/R FIND SOP class accepted by remote AE");
             let _ = assoc.abort().await;
@@ -133,7 +112,7 @@ async fn main() {
     }
 
     let req = FindRequest {
-        sop_class_uid: STUDY_ROOT_FIND.to_string(),
+        sop_class_uid: sop_class_uid.to_string(),
         query: query_bytes,
         context_id: ctx_id,
         priority: 0,
@@ -148,85 +127,18 @@ async fn main() {
         }
     };
 
+    let response_ts = accepted_transfer_syntax(&assoc, ctx_id).unwrap_or(TS_EXPLICIT_VR_LE);
+
     println!("Found {} result(s):", results.len());
     for (i, result_bytes) in results.iter().enumerate() {
         println!("\n# Result #{}", i + 1);
-        match DicomReader::new(result_bytes.as_slice()).read_dataset(TS_EXPLICIT_VR_LE) {
+        match decode_dataset_with_fallback(result_bytes.as_slice(), response_ts) {
             Ok(ds) => print_dataset(&ds, 0),
-            Err(_) => {
-                // Try Implicit VR LE fallback
-                if let Ok(ds) =
-                    DicomReader::new(result_bytes.as_slice()).read_dataset(TS_IMPLICIT_VR_LE)
-                {
-                    print_dataset(&ds, 0);
-                } else {
-                    eprintln!("  (could not decode result dataset)");
-                }
-            }
+            Err(_) => eprintln!("  (could not decode result dataset)"),
         }
     }
 
     if let Err(e) = assoc.release().await {
         eprintln!("Release failed: {}", e);
-    }
-}
-
-// ── Query building ────────────────────────────────────────────────────────────
-
-fn build_query(keys: &[String], level: &str) -> DcmResult<DataSet> {
-    let mut ds = DataSet::new();
-
-    // Set QueryRetrieveLevel
-    ds.set_string(tags::QUERY_RETRIEVE_LEVEL, Vr::CS, level);
-
-    for kv in keys {
-        let (tag_str, value) = if let Some(pos) = kv.find('=') {
-            (kv[..pos].trim(), &kv[pos + 1..])
-        } else {
-            (kv.trim(), "")
-        };
-
-        let tag = parse_tag(tag_str).map_err(dicom_toolkit_core::error::DcmError::Other)?;
-        // Use a generic string VR — the SCP will interpret based on the tag
-        ds.set_string(tag, Vr::LO, value);
-    }
-
-    Ok(ds)
-}
-
-/// Parse a tag string like "0010,0010" or "00100010".
-fn parse_tag(s: &str) -> Result<dicom_toolkit_dict::Tag, String> {
-    let s = s.trim_matches(|c| c == '(' || c == ')');
-    let clean: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-    if clean.len() == 8 {
-        let group =
-            u16::from_str_radix(&clean[..4], 16).map_err(|_| format!("invalid tag: {}", s))?;
-        let element =
-            u16::from_str_radix(&clean[4..], 16).map_err(|_| format!("invalid tag: {}", s))?;
-        Ok(dicom_toolkit_dict::Tag::new(group, element))
-    } else {
-        Err(format!("invalid tag format: {}", s))
-    }
-}
-
-// ── Printing ──────────────────────────────────────────────────────────────────
-
-fn print_dataset(ds: &DataSet, indent: usize) {
-    let prefix = "  ".repeat(indent);
-    for (tag, elem) in ds.iter() {
-        let tag_str = format!("({:04X},{:04X})", tag.group, tag.element);
-        if let Value::Sequence(items) = &elem.value {
-            println!(
-                "{}{} SQ (Sequence with {} items) # -1, 1",
-                prefix,
-                tag_str,
-                items.len()
-            );
-            for item in items.iter() {
-                print_dataset(item, indent + 1);
-            }
-        } else {
-            println!("{}{}", prefix, elem);
-        }
     }
 }

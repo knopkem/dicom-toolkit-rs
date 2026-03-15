@@ -198,7 +198,7 @@ fn forward_lift_53(data: &mut [f32]) {
 
     // Step 1: Predict (high-pass) — update odd samples
     // d(i) = x(2i+1) - floor((x(2i) + x(2i+2)) / 2)
-    let last_even = if n.is_multiple_of(2) { n - 2 } else { n - 1 };
+    let last_even = if n % 2 == 0 { n - 2 } else { n - 1 };
     for i in (1..n).step_by(2) {
         let left = data[i - 1];
         let right = if i + 1 < n {
@@ -344,7 +344,7 @@ mod tests {
             data[i] -= ((left + right) * 0.25 + 0.5).floor();
         }
         // Undo predict
-        let last_even = if n.is_multiple_of(2) { n - 2 } else { n - 1 };
+        let last_even = if n % 2 == 0 { n - 2 } else { n - 1 };
         for i in (1..n).step_by(2) {
             let left = data[i - 1];
             let right = if i + 1 < n {
