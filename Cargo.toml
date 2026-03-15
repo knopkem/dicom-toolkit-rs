@@ -15,19 +15,19 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/AshLint/dicom-toolkit-rs"
-homepage = "https://github.com/AshLint/dicom-toolkit-rs"
+repository = "https://github.com/knopkem/dicom-toolkit-rs"
+homepage = "https://github.com/knopkem/dicom-toolkit-rs"
 keywords = ["dicom", "medical-imaging", "pacs", "healthcare"]
 categories = ["science", "parser-implementations", "encoding"]
 
 [workspace.dependencies]
 # Internal crates
-dicom-toolkit-core = { path = "crates/dicom-toolkit-core" }
-dicom-toolkit-dict = { path = "crates/dicom-toolkit-dict" }
-dicom-toolkit-data = { path = "crates/dicom-toolkit-data" }
-dicom-toolkit-net = { path = "crates/dicom-toolkit-net" }
-dicom-toolkit-image = { path = "crates/dicom-toolkit-image" }
-dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec" }
+dicom-toolkit-core = { path = "crates/dicom-toolkit-core", version = "0.1.0" }
+dicom-toolkit-dict = { path = "crates/dicom-toolkit-dict", version = "0.1.0" }
+dicom-toolkit-data = { path = "crates/dicom-toolkit-data", version = "0.1.0" }
+dicom-toolkit-net = { path = "crates/dicom-toolkit-net", version = "0.1.0" }
+dicom-toolkit-image = { path = "crates/dicom-toolkit-image", version = "0.1.0" }
+dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec", version = "0.1.0" }
 
 # Error handling
 thiserror = "2"
