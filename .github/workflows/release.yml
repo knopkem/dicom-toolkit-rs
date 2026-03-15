@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Build binaries for each platform ──────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Install cross for Linux aarch64 builds
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      # Build release binaries
+      - name: Build
+        run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release --target ${{ matrix.target }} -p dicom-toolkit-tools
+
+      # Strip binaries (Unix only)
+      - name: Strip binaries (Unix)
+        if: runner.os != 'Windows' && !matrix.cross
+        run: |
+          for bin in dcmdump echoscu storescu storescp findscu img2dcm dcmcjpls dcmdjpls; do
+            strip "target/${{ matrix.target }}/release/${bin}" 2>/dev/null || true
+          done
+
+      # Package as tar.gz (Unix)
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          STAGING="dicom-toolkit-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir -p "${STAGING}"
+          for bin in dcmdump echoscu storescu storescp findscu img2dcm dcmcjpls dcmdjpls; do
+            cp "target/${{ matrix.target }}/release/${bin}" "${STAGING}/"
+          done
+          cp LICENSE-MIT LICENSE-APACHE NOTICE README.md "${STAGING}/"
+          tar czf "${STAGING}.tar.gz" "${STAGING}"
+          echo "ASSET=${STAGING}.tar.gz" >> "$GITHUB_ENV"
+
+      # Package as zip (Windows)
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $staging = "dicom-toolkit-${{ github.ref_name }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $staging
+          $bins = @("dcmdump", "echoscu", "storescu", "storescp", "findscu", "img2dcm", "dcmcjpls", "dcmdjpls")
+          foreach ($bin in $bins) {
+            Copy-Item "target/${{ matrix.target }}/release/${bin}.exe" $staging
+          }
+          Copy-Item LICENSE-MIT, LICENSE-APACHE, NOTICE, README.md $staging
+          Compress-Archive -Path $staging -DestinationPath "${staging}.zip"
+          "ASSET=${staging}.zip" | Out-File -Append -FilePath $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ env.ASSET }}
+
+  # ── Create GitHub Release ─────────────────────────────────────────────────────
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum dicom-toolkit-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          body: |
+            ## ⚠️ NOT FOR CLINICAL USE
+
+            This software is intended for **research and educational purposes only**.
+            It has NOT been reviewed, validated, or approved for clinical or diagnostic use.
+
+            ---
+
+            ### Installation
+
+            Download the archive for your platform, extract, and place the binaries in your `PATH`.
+
+            **Included tools:**
+            | Tool | Description |
+            |------|-------------|
+            | `dcmdump` | Print DICOM file contents |
+            | `echoscu` | DICOM C-ECHO (connectivity test) |
+            | `storescu` | DICOM C-STORE SCU (send files) |
+            | `storescp` | DICOM C-STORE SCP (receive files) |
+            | `findscu` | DICOM C-FIND SCU (query) |
+            | `img2dcm` | Convert PNG images to DICOM |
+            | `dcmcjpls` | Compress DICOM with JPEG-LS |
+            | `dcmdjpls` | Decompress JPEG-LS DICOM files |
+
+            ### Verify checksums
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: |
+            artifacts/*
