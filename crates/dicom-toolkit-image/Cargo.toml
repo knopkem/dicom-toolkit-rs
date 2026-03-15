@@ -1,0 +1,23 @@
+[package]
+name = "dicom-toolkit-image"
+description = "DICOM image processing: pixel data, window/level, LUTs, color models, export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+dicom-toolkit-core.workspace = true
+dicom-toolkit-dict.workspace = true
+dicom-toolkit-data.workspace = true
+png.workspace = true
+tiff.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile = "3"

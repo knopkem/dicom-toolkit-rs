@@ -1,0 +1,17 @@
+[package]
+name = "dicom-toolkit-dict"
+description = "DICOM data dictionary, tag constants, VR definitions, and transfer syntax registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+dicom-toolkit-core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

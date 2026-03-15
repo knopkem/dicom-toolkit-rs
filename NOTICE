@@ -1,0 +1,33 @@
+# Notice
+
+This project is an independent, clean-room Rust port inspired by the following
+open-source projects. It is **not** affiliated with, endorsed by, or derived
+from the original codebases in any way that would constitute a derivative work.
+
+## DCMTK — DICOM Toolkit
+
+- **Original project:** [DCMTK](https://dicom.offis.de/dcmtk.php.en)
+- **Copyright:** © 1993–2024 OFFIS e.V., Oldenburg, Germany
+- **License:** BSD 3-Clause (see DCMTK source distribution)
+- **Acknowledgment:** The DICOM networking protocol implementation, data model
+  design, and overall architecture of this project were informed by studying
+  DCMTK 3.7.0's public documentation and source structure. No source code was
+  copied. All Rust code was written from scratch using the DICOM standard
+  (PS3.1–PS3.20) as the normative reference.
+
+## CharLS — JPEG-LS Codec
+
+- **Original project:** [CharLS](https://github.com/team-charls/charls)
+- **Copyright:** © 2007–2024 Team CharLS
+- **License:** BSD 3-Clause
+- **Acknowledgment:** The JPEG-LS codec in this project was implemented by
+  studying the ISO/IEC 14495-1 standard and referencing CharLS's algorithmic
+  approach (context modeling, Golomb coding tables, prediction). All Rust code
+  was written independently; no C++ source was translated line-by-line.
+
+## DICOM Standard
+
+- **Publisher:** National Electrical Manufacturers Association (NEMA)
+- **Reference:** DICOM PS3.1–PS3.20 (2024b)
+- **Note:** DICOM® is the registered trademark of NEMA for its standards
+  publications relating to digital communications of medical information.

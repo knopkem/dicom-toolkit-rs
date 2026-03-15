@@ -1,0 +1,27 @@
+[package]
+name = "dicom-toolkit-data"
+description = "Core DICOM data structures, file I/O, and encoding/decoding"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+dicom-toolkit-core.workspace = true
+dicom-toolkit-dict.workspace = true
+indexmap.workspace = true
+bytes.workspace = true
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+quick-xml.workspace = true
+base64.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile = "3"

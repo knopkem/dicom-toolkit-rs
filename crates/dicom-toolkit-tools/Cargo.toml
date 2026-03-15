@@ -1,0 +1,59 @@
+[package]
+name = "dicom-toolkit-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "CLI tools for DICOM: dcmdump, echoscu, storescu, storescp, findscu, img2dcm, dcmcjpls, dcmdjpls"
+
+[dependencies]
+dicom-toolkit-core.workspace = true
+dicom-toolkit-dict.workspace = true
+dicom-toolkit-data.workspace = true
+dicom-toolkit-net.workspace = true
+dicom-toolkit-image.workspace = true
+dicom-toolkit-codec.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+png.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "dcmdump"
+path = "src/bin/dcmdump.rs"
+
+[[bin]]
+name = "echoscu"
+path = "src/bin/echoscu.rs"
+
+[[bin]]
+name = "storescu"
+path = "src/bin/storescu.rs"
+
+[[bin]]
+name = "storescp"
+path = "src/bin/storescp.rs"
+
+[[bin]]
+name = "findscu"
+path = "src/bin/findscu.rs"
+
+[[bin]]
+name = "img2dcm"
+path = "src/bin/img2dcm.rs"
+
+[[bin]]
+name = "dcmcjpls"
+path = "src/bin/dcmcjpls.rs"
+
+[[bin]]
+name = "dcmdjpls"
+path = "src/bin/dcmdjpls.rs"

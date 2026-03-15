@@ -1,0 +1,26 @@
+[package]
+name = "dicom-toolkit-net"
+description = "Async DICOM networking: association management, DIMSE services (C-ECHO, C-STORE, C-FIND, C-GET, C-MOVE)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+dicom-toolkit-core.workspace = true
+dicom-toolkit-dict.workspace = true
+dicom-toolkit-data.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
+bytes.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile = "3"

@@ -1,0 +1,23 @@
+[package]
+name = "dicom-toolkit-core"
+description = "Foundation types and utilities for the dicom-toolkit-rs DICOM toolkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+encoding_rs.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+crc32fast.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

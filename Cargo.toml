@@ -1,0 +1,85 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dicom-toolkit-core",
+    "crates/dicom-toolkit-dict",
+    "crates/dicom-toolkit-data",
+    "crates/dicom-toolkit-net",
+    "crates/dicom-toolkit-image",
+    "crates/dicom-toolkit-codec",
+    "crates/dicom-toolkit-tools",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AshLint/dicom-toolkit-rs"
+homepage = "https://github.com/AshLint/dicom-toolkit-rs"
+keywords = ["dicom", "medical-imaging", "pacs", "healthcare"]
+categories = ["science", "parser-implementations", "encoding"]
+
+[workspace.dependencies]
+# Internal crates
+dicom-toolkit-core = { path = "crates/dicom-toolkit-core" }
+dicom-toolkit-dict = { path = "crates/dicom-toolkit-dict" }
+dicom-toolkit-data = { path = "crates/dicom-toolkit-data" }
+dicom-toolkit-net = { path = "crates/dicom-toolkit-net" }
+dicom-toolkit-image = { path = "crates/dicom-toolkit-image" }
+dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec" }
+
+# Error handling
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+quick-xml = "0.37"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-rustls = "0.26"
+rustls = "0.23"
+
+# Compression
+flate2 = "1"
+
+# Character encoding
+encoding_rs = "0.8"
+
+# Image codecs
+jpeg-decoder = "0.3"
+jpeg-encoder = "0.6"
+png = "0.17"
+tiff = "0.9"
+
+# Data structures
+indexmap = "2"
+
+# TLS / PEM helpers
+rustls-pemfile = "2"
+
+# Utilities
+bytes = "1"
+bitflags = "2"
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+crc32fast = "1"
+inventory = "0.3"
+base64 = "0.22"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Testing
+proptest = "1"
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
