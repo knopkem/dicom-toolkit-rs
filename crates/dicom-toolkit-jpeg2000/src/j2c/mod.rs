@@ -9,6 +9,7 @@ mod decode;
 pub(crate) mod encode;
 pub(crate) mod fdwt;
 pub(crate) mod forward_mct;
+mod ht_block_decode;
 mod ht_tables;
 mod idwt;
 mod mct;

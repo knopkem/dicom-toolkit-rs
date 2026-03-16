@@ -10,6 +10,7 @@ use alloc::vec::Vec;
 use super::bitplane::{BitPlaneDecodeBuffers, BitPlaneDecodeContext};
 use super::build::{CodeBlock, Decomposition, Layer, Precinct, Segment, SubBand, SubBandType};
 use super::codestream::{ComponentInfo, Header, ProgressionOrder, QuantizationStyle};
+use super::ht_block_decode::{self, HtBlockDecodeContext};
 use super::idwt::IDWTOutput;
 use super::progression::{
     component_position_resolution_layer_progression,
@@ -256,6 +257,8 @@ pub(crate) struct TileDecodeContext {
     pub(crate) bit_plane_decode_context: BitPlaneDecodeContext,
     /// Reusable buffers for decoding bitplanes.
     pub(crate) bit_plane_decode_buffers: BitPlaneDecodeBuffers,
+    /// A reusable context for decoding HTJ2K code blocks.
+    pub(crate) ht_block_decode_context: HtBlockDecodeContext,
     /// The raw, decoded samples for each channel.
     pub(crate) channel_data: Vec<ComponentData>,
 }
@@ -359,14 +362,6 @@ fn decode_sub_band_bitplanes(
         num_bitplanes as u8
     };
 
-    if component_info
-        .coding_style
-        .flags
-        .uses_high_throughput_block_coding()
-    {
-        bail!(DecodingError::UnsupportedFeature("HTJ2K block decoding"));
-    }
-
     for precinct in sub_band
         .precincts
         .clone()
@@ -377,34 +372,72 @@ fn decode_sub_band_bitplanes(
             .clone()
             .map(|idx| &storage.code_blocks[idx])
         {
-            bitplane::decode(
-                code_block,
-                sub_band.sub_band_type,
-                num_bitplanes,
-                &component_info.coding_style.parameters.code_block_style,
-                tile_ctx,
-                storage,
-                header.strict,
-            )?;
-
             // Turn the signs and magnitudes into singular coefficients and
             // copy them into the sub-band.
 
             let x_offset = code_block.rect.x0 - sub_band.rect.x0;
             let y_offset = code_block.rect.y0 - sub_band.rect.y0;
 
-            let base_store = &mut storage.coefficients[sub_band.coefficients.clone()];
-            let mut base_idx = (y_offset * sub_band.rect.width()) as usize + x_offset as usize;
+            if component_info
+                .coding_style
+                .flags
+                .uses_high_throughput_block_coding()
+            {
+                ht_block_decode::decode(
+                    code_block,
+                    num_bitplanes,
+                    component_info
+                        .coding_style
+                        .parameters
+                        .code_block_style
+                        .vertically_causal_context,
+                    &mut tile_ctx.ht_block_decode_context,
+                    storage,
+                    header.strict,
+                )?;
 
-            for coefficients in tile_ctx.bit_plane_decode_context.coefficient_rows() {
-                let out_row = &mut base_store[base_idx..];
+                let base_store = &mut storage.coefficients[sub_band.coefficients.clone()];
+                let mut base_idx = (y_offset * sub_band.rect.width()) as usize + x_offset as usize;
 
-                for (output, coefficient) in out_row.iter_mut().zip(coefficients.iter().copied()) {
-                    *output = coefficient.get() as f32;
-                    *output *= dequantization_step;
+                for coefficients in tile_ctx.ht_block_decode_context.coefficient_rows() {
+                    let out_row = &mut base_store[base_idx..];
+
+                    for (output, coefficient) in
+                        out_row.iter_mut().zip(coefficients.iter().copied())
+                    {
+                        *output =
+                            ht_block_decode::coefficient_to_i32(coefficient, num_bitplanes) as f32;
+                        *output *= dequantization_step;
+                    }
+
+                    base_idx += sub_band.rect.width() as usize;
                 }
+            } else {
+                bitplane::decode(
+                    code_block,
+                    sub_band.sub_band_type,
+                    num_bitplanes,
+                    &component_info.coding_style.parameters.code_block_style,
+                    tile_ctx,
+                    storage,
+                    header.strict,
+                )?;
 
-                base_idx += sub_band.rect.width() as usize;
+                let base_store = &mut storage.coefficients[sub_band.coefficients.clone()];
+                let mut base_idx = (y_offset * sub_band.rect.width()) as usize + x_offset as usize;
+
+                for coefficients in tile_ctx.bit_plane_decode_context.coefficient_rows() {
+                    let out_row = &mut base_store[base_idx..];
+
+                    for (output, coefficient) in
+                        out_row.iter_mut().zip(coefficients.iter().copied())
+                    {
+                        *output = coefficient.get() as f32;
+                        *output *= dequantization_step;
+                    }
+
+                    base_idx += sub_band.rect.width() as usize;
+                }
             }
         }
     }
