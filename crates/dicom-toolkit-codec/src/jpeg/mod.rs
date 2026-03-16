@@ -1,10 +1,12 @@
-//! JPEG codec support — JPEG baseline/extended decoder and encoder.
+//! JPEG codec support — JPEG baseline/extended plus classic JPEG Lossless.
 //!
-//! Wraps the `jpeg-decoder` and `jpeg-encoder` crates and adapts them to the
-//! DICOM encapsulated pixel data model.
+//! Wraps the `jpeg-decoder` and `jpeg-encoder` crates, plus the in-workspace
+//! classic JPEG Lossless encoder, and adapts them to the DICOM encapsulated
+//! pixel data model.
 
 pub mod decoder;
 pub mod encoder;
+pub mod lossless_encoder;
 pub mod params;
 
 use dicom_toolkit_core::error::DcmResult;
@@ -13,6 +15,7 @@ use dicom_toolkit_core::error::DcmResult;
 
 pub use decoder::{decode_jpeg, JpegFrame};
 pub use encoder::encode_jpeg;
+pub use lossless_encoder::encode_jpeg_lossless;
 pub use params::JpegParams;
 
 // ── JpegDecoder ───────────────────────────────────────────────────────────────

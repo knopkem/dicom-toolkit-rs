@@ -142,6 +142,8 @@ impl JpegCodec {
     }
 }
 
+struct JpegLosslessCodec;
+
 impl ImageCodec for JpegCodec {
     fn transfer_syntax_uids(&self) -> &[&str] {
         &self.uids
@@ -184,6 +186,57 @@ impl ImageCodec for JpegCodec {
             rows,
             samples_per_pixel,
             &JpegParams::default(),
+        )?;
+        encapsulated_pixel_data_from_frames(&[encoded])
+    }
+}
+
+impl ImageCodec for JpegLosslessCodec {
+    fn transfer_syntax_uids(&self) -> &[&str] {
+        &[
+            transfer_syntaxes::JPEG_LOSSLESS.uid,
+            transfer_syntaxes::JPEG_LOSSLESS_SV1.uid,
+        ]
+    }
+
+    fn decode(
+        &self,
+        pixel_data: &PixelData,
+        _rows: u16,
+        _columns: u16,
+        _samples_per_pixel: u8,
+        _bits_allocated: u8,
+    ) -> DcmResult<Vec<u8>> {
+        let fragments = match pixel_data {
+            PixelData::Encapsulated { fragments, .. } => fragments,
+            PixelData::Native { bytes } => return Ok(bytes.clone()),
+        };
+
+        let mut all_frames = Vec::new();
+        for fragment in fragments {
+            let frame = crate::jpeg::decoder::decode_jpeg(fragment)?;
+            all_frames.extend_from_slice(&frame.data);
+        }
+        Ok(all_frames)
+    }
+
+    fn encode(
+        &self,
+        pixels: &[u8],
+        rows: u16,
+        columns: u16,
+        samples_per_pixel: u8,
+        bits_allocated: u8,
+        bits_stored: u8,
+    ) -> DcmResult<PixelData> {
+        let encoded = crate::jpeg::lossless_encoder::encode_jpeg_lossless(
+            pixels,
+            columns,
+            rows,
+            samples_per_pixel,
+            bits_allocated,
+            bits_stored,
+            1,
         )?;
         encapsulated_pixel_data_from_frames(&[encoded])
     }
@@ -516,6 +569,7 @@ pub static GLOBAL_REGISTRY: LazyLock<CodecRegistry> = LazyLock::new(|| {
     let reg = CodecRegistry::new();
     reg.register(Arc::new(RleCodec));
     reg.register(Arc::new(JpegCodec::baseline()));
+    reg.register(Arc::new(JpegLosslessCodec));
     reg.register(Arc::new(JpegLsCodec));
     reg.register(Arc::new(Jp2kDecodeCodec));
     reg.register(Arc::new(Jp2kEncodeCodec::new(
@@ -566,6 +620,8 @@ const SUPPORTED_ENCODE_TS: &[&str] = &[
     transfer_syntaxes::RLE_LOSSLESS.uid,
     transfer_syntaxes::JPEG_BASELINE.uid,
     transfer_syntaxes::JPEG_EXTENDED.uid,
+    transfer_syntaxes::JPEG_LOSSLESS.uid,
+    transfer_syntaxes::JPEG_LOSSLESS_SV1.uid,
     transfer_syntaxes::JPEG_LS_LOSSLESS.uid,
     transfer_syntaxes::JPEG_LS_LOSSY.uid,
     transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
@@ -682,6 +738,14 @@ mod tests {
     }
 
     #[test]
+    fn global_registry_has_jpeg_lossless_encoder() {
+        let codec = GLOBAL_REGISTRY.find(transfer_syntaxes::JPEG_LOSSLESS.uid);
+        assert!(codec.is_some());
+        let sv1 = GLOBAL_REGISTRY.find(transfer_syntaxes::JPEG_LOSSLESS_SV1.uid);
+        assert!(sv1.is_some());
+    }
+
+    #[test]
     fn global_registry_has_htj2k_decoder() {
         let codec = GLOBAL_REGISTRY.find_decoder(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid);
         assert!(codec.is_some());
@@ -750,10 +814,10 @@ mod tests {
     fn supported_encode_transfer_syntaxes_excludes_decode_only_codecs() {
         let list = supported_encode_transfer_syntaxes();
         assert!(list.contains(&transfer_syntaxes::RLE_LOSSLESS.uid));
+        assert!(list.contains(&transfer_syntaxes::JPEG_LOSSLESS.uid));
+        assert!(list.contains(&transfer_syntaxes::JPEG_LOSSLESS_SV1.uid));
         assert!(list.contains(&transfer_syntaxes::JPEG_2000_LOSSLESS.uid));
         assert!(list.contains(&transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid));
-        assert!(!list.contains(&transfer_syntaxes::JPEG_LOSSLESS.uid));
-        assert!(!list.contains(&transfer_syntaxes::JPEG_LOSSLESS_SV1.uid));
         assert!(
             !list.contains(&transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid)
         );
@@ -763,7 +827,8 @@ mod tests {
     fn can_encode_distinguishes_decode_only_transfer_syntaxes() {
         assert!(can_encode(transfer_syntaxes::JPEG_BASELINE.uid));
         assert!(can_encode(transfer_syntaxes::JPEG_LS_LOSSLESS.uid));
-        assert!(!can_encode(transfer_syntaxes::JPEG_LOSSLESS.uid));
+        assert!(can_encode(transfer_syntaxes::JPEG_LOSSLESS.uid));
+        assert!(can_encode(transfer_syntaxes::JPEG_LOSSLESS_SV1.uid));
         assert!(!can_encode(
             transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid
         ));

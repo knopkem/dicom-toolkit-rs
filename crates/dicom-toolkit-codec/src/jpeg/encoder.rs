@@ -1,4 +1,4 @@
-//! JPEG baseline encoder wrapping `jpeg-encoder`.
+//! JPEG baseline/extended encoder wrapping `jpeg-encoder`.
 //!
 //! Encodes raw pixel data to a JPEG fragment for DICOM encapsulated storage.
 
@@ -7,7 +7,7 @@ use jpeg_encoder::{ColorType, Encoder};
 
 use super::params::JpegParams;
 
-/// Encode raw pixel bytes as JPEG baseline.
+/// Encode raw pixel bytes as JPEG baseline/extended-style Huffman JPEG.
 ///
 /// - `pixels`: interleaved pixel bytes (grayscale = 1 byte/px, RGB = 3 bytes/px)
 /// - `width`, `height`: image dimensions in pixels

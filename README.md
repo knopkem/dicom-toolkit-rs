@@ -623,6 +623,23 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 
 ---
 
+## JPEG Codec
+
+`dicom-toolkit-codec` also provides classic JPEG support for DICOM transfer
+syntaxes used in older archives and interoperability paths.
+
+**Supported features:**
+- JPEG Baseline / Extended decode and encode for
+  `1.2.840.10008.1.2.4.50` and `1.2.840.10008.1.2.4.51`
+- Classic JPEG Lossless (Process 14) decode and encode for
+  `1.2.840.10008.1.2.4.57` and `1.2.840.10008.1.2.4.70`
+- Grayscale and RGB codec coverage in the crate test suite
+- Registry-level capability reporting via
+  `supported_decode_transfer_syntaxes()` and
+  `supported_encode_transfer_syntaxes()`
+
+---
+
 ## JPEG 2000 Codec
 
 `dicom-toolkit-codec` now includes **pure-Rust JPEG 2000** support backed by the in-workspace `dicom-toolkit-jpeg2000` fork. No C/C++ bindings are used.

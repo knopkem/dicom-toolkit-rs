@@ -2,7 +2,7 @@
 
 use jpeg_encoder::SamplingFactor;
 
-/// JPEG codec encoding parameters, mirroring DCMTK's `DJ_RPLossless`/`DJ_RPLossy`.
+/// JPEG baseline/extended encoding parameters.
 #[derive(Debug, Clone)]
 pub struct JpegParams {
     /// JPEG quality factor 1–100. 75 is a typical clinical default.
@@ -24,7 +24,10 @@ impl Default for JpegParams {
 }
 
 impl JpegParams {
-    /// Lossless-quality parameters (quality=100, no sub-sampling).
+    /// High-quality baseline/extended parameters (quality=100, no sub-sampling).
+    ///
+    /// This improves fidelity, but it is still not classic JPEG Lossless
+    /// Process 14. Use `encode_jpeg_lossless(...)` for true lossless output.
     pub fn lossless() -> Self {
         Self {
             quality: 100,
