@@ -24,7 +24,8 @@ pub(crate) fn parse<'a, 'b>(
         && tile.component_infos.iter().any(|component_info| {
             component_info
                 .coding_style
-                .flags
+                .parameters
+                .code_block_style
                 .uses_high_throughput_block_coding()
         })
     {
@@ -139,7 +140,8 @@ fn resolve_segments(
 ) -> Option<()> {
     if component_info
         .coding_style
-        .flags
+        .parameters
+        .code_block_style
         .uses_high_throughput_block_coding()
     {
         resolve_ht_segments(sub_band_dx, progression_data, reader, storage)
@@ -582,7 +584,7 @@ fn segment_idx_for_bypass(pass_idx: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::j2c::codestream::CodingStyleFlags;
+    use crate::j2c::codestream::CodeBlockStyle;
     use crate::writer::BitWriter;
 
     fn encode_ht_num_passes(num_passes: u8) -> Vec<u8> {
@@ -613,12 +615,15 @@ mod tests {
     }
 
     #[test]
-    fn test_coding_style_flags_detects_high_throughput() {
-        let flags = CodingStyleFlags { raw: 0x40 };
-        assert!(flags.uses_high_throughput_block_coding());
+    fn test_code_block_style_detects_high_throughput() {
+        let style = CodeBlockStyle {
+            high_throughput_block_coding: true,
+            ..Default::default()
+        };
+        assert!(style.uses_high_throughput_block_coding());
 
-        let flags = CodingStyleFlags { raw: 0x04 };
-        assert!(!flags.uses_high_throughput_block_coding());
+        let style = CodeBlockStyle::default();
+        assert!(!style.uses_high_throughput_block_coding());
     }
 
     #[test]

@@ -588,6 +588,7 @@ fn decode_impl(
         let mut sp = 0usize;
         let mut vp = 0usize;
         let mut dp = 0usize;
+        let second_row_present = height > 1;
 
         while x < width {
             let inf = u32::from(scratch[sp]);
@@ -600,7 +601,9 @@ fn decode_impl(
             decoded_data[dp] = val0;
 
             let (val1, v_n1) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf, 1, uq, p);
-            decoded_data[dp + stride as usize] = val1;
+            if second_row_present {
+                decoded_data[dp + stride as usize] = val1;
+            }
             v_n_scratch[vp] = prev_v_n | v_n1;
             prev_v_n = 0;
             dp += 1;
@@ -611,21 +614,17 @@ fn decode_impl(
                 break;
             }
 
-            let inf1 = u32::from(scratch[sp + 2]);
-            let uq1 = u32::from(scratch[sp + 3]);
-            if uq1 > mmsbp2 {
-                return None;
-            }
-
-            let (val2, _) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf1, 2, uq1, p);
+            let (val2, _) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf, 2, uq, p);
             decoded_data[dp] = val2;
 
-            let (val3, v_n3) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf1, 3, uq1, p);
-            decoded_data[dp + stride as usize] = val3;
+            let (val3, v_n3) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf, 3, uq, p);
+            if second_row_present {
+                decoded_data[dp + stride as usize] = val3;
+            }
             prev_v_n = v_n3;
             dp += 1;
             x += 1;
-            sp += 4;
+            sp += 2;
             vp += 1;
         }
         v_n_scratch[vp] = prev_v_n;
@@ -637,6 +636,7 @@ fn decode_impl(
             let mut dp = (y * stride) as usize;
             let mut prev_v_n = 0u32;
             let mut x = 0u32;
+            let second_row_present = y + 1 < height;
 
             while x < width {
                 let inf = u32::from(scratch[sp]);
@@ -655,7 +655,9 @@ fn decode_impl(
                 decoded_data[dp] = val0;
 
                 let (val1, v_n1) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf, 1, uq, p);
-                decoded_data[dp + stride as usize] = val1;
+                if second_row_present {
+                    decoded_data[dp + stride as usize] = val1;
+                }
                 v_n_scratch[vp] = prev_v_n | v_n1;
                 prev_v_n = 0;
                 dp += 1;
@@ -670,7 +672,9 @@ fn decode_impl(
                 decoded_data[dp] = val2;
 
                 let (val3, v_n3) = decode_mag_sgn_sample_with_vn(&mut magsgn, inf, 3, uq, p);
-                decoded_data[dp + stride as usize] = val3;
+                if second_row_present {
+                    decoded_data[dp + stride as usize] = val3;
+                }
                 prev_v_n = v_n3;
                 dp += 1;
                 x += 1;

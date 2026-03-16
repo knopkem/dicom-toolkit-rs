@@ -615,11 +615,12 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 - Library-level encode/decode plus CLI tools `dcmcjp2k` and `dcmdjp2k`
 - Multi-fragment decode (one codestream per frame) in the codec/tools path
 - Decode-side wiring for HTJ2K transfer syntaxes `.201`, `.202`, and `.203`
+- Fixture-backed strict-mode HTJ2K decode coverage using an imported OpenHTJ2K conformance codestream
 
 **Current scope:**
 - JPEG 2000 Part 1 codestreams aimed at common DICOM usage
 - Single quality layer in the current encoder
-- HTJ2K decode support is currently single-layer only and intended as an in-progress foundation
+- HTJ2K decode support is currently single-layer only, but now includes real conformance-fixture validation
 - Lossless and basic lossy mode; quality tuning is not yet exposed as a user-facing option
 
 ---
@@ -704,7 +705,7 @@ Ships ready to use — receives DICOM instances and saves them as `.dcm` files:
 
 - **Worklist / MPPS**: not yet ported.
 - **JPEG-LS ILV_SAMPLE**: pixel-interleaved multi-component mode not yet supported (ILV_NONE and ILV_LINE work).
-- **JPEG 2000 advanced profiles**: HTJ2K encode support, multi-layer HT decoding, and Part 2 multi-component features are not implemented yet. Current HTJ2K support is decode-oriented and still awaiting broader real-world fixture validation.
+- **JPEG 2000 advanced profiles**: HTJ2K encode support, multi-layer HT decoding, and Part 2 multi-component features are not implemented yet. Current HTJ2K support is decode-oriented and validated against a first real OpenHTJ2K conformance fixture, but broader fixture/DICOM coverage still remains.
 - **JPEG 2000 lossy tuning**: current tools expose lossless vs. lossy mode, but not quality/rate controls yet.
 
 ---

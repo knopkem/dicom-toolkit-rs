@@ -56,6 +56,10 @@ pub(crate) fn read_header<'a>(
     loop {
         match reader.peek_marker().ok_or(MarkerError::Invalid)? {
             markers::SOT => break,
+            markers::CAP | markers::CPF => {
+                reader.read_marker()?;
+                skip_marker_segment(reader).ok_or(MarkerError::ParseFailure("CAP/CPF"))?;
+            }
             markers::COD => {
                 reader.read_marker()?;
                 cod = Some(cod_marker(reader).ok_or(MarkerError::ParseFailure("COD"))?);
@@ -335,10 +339,6 @@ impl CodingStyleFlags {
         Self { raw: value }
     }
 
-    pub(crate) fn uses_high_throughput_block_coding(&self) -> bool {
-        (self.raw & 0x40) != 0
-    }
-
     pub(crate) fn has_precincts(&self) -> bool {
         (self.raw & 0x01) != 0
     }
@@ -360,6 +360,7 @@ pub(crate) struct CodeBlockStyle {
     pub(crate) termination_on_each_pass: bool,
     pub(crate) vertically_causal_context: bool,
     pub(crate) segmentation_symbols: bool,
+    pub(crate) high_throughput_block_coding: bool,
 }
 
 impl CodeBlockStyle {
@@ -372,7 +373,12 @@ impl CodeBlockStyle {
             // The predictable termination flag is only informative and
             // can therefore be ignored.
             segmentation_symbols: (value & 0x20) != 0,
+            high_throughput_block_coding: (value & 0x40) != 0,
         }
+    }
+
+    pub(crate) fn uses_high_throughput_block_coding(&self) -> bool {
+        self.high_throughput_block_coding
     }
 }
 
@@ -921,6 +927,8 @@ pub(crate) mod markers {
     /// End of codestream - 'EOC'.
     pub(crate) const EOC: u8 = 0xD9;
 
+    /// Extended capabilities - 'CAP'.
+    pub(crate) const CAP: u8 = 0x50;
     /// Image and tile size - 'SIZ'.
     pub(crate) const SIZ: u8 = 0x51;
 
@@ -943,6 +951,8 @@ pub(crate) mod markers {
     pub(crate) const PLM: u8 = 0x57;
     /// Packet length, tile-part header - 'PLT'.
     pub(crate) const PLT: u8 = 0x58;
+    /// Corresponding profile - 'CPF'.
+    pub(crate) const CPF: u8 = 0x59;
     /// Packed packet headers, main header - 'PPM'.
     pub(crate) const PPM: u8 = 0x60;
     /// Packed packet headers, tile-part header - 'PPT'.
@@ -967,6 +977,7 @@ pub(crate) mod markers {
             EOC => "EOC",
 
             // Fixed information.
+            CAP => "CAP",
             SIZ => "SIZ",
 
             // Functional markers.
@@ -981,6 +992,7 @@ pub(crate) mod markers {
             TLM => "TLM",
             PLM => "PLM",
             PLT => "PLT",
+            CPF => "CPF",
             PPM => "PPM",
             PPT => "PPT",
 

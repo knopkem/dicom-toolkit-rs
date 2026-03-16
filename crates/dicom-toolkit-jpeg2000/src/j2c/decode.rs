@@ -380,7 +380,8 @@ fn decode_sub_band_bitplanes(
 
             if component_info
                 .coding_style
-                .flags
+                .parameters
+                .code_block_style
                 .uses_high_throughput_block_coding()
             {
                 ht_block_decode::decode(
