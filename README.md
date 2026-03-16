@@ -615,12 +615,12 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 - Library-level encode/decode plus CLI tools `dcmcjp2k` and `dcmdjp2k`
 - Multi-fragment decode (one codestream per frame) in the codec/tools path
 - Decode-side wiring for HTJ2K transfer syntaxes `.201`, `.202`, and `.203`
-- Fixture-backed strict-mode HTJ2K decode coverage using an imported OpenHTJ2K conformance codestream
+- Fixture-backed strict-mode HTJ2K decode coverage using imported OpenHTJ2K conformance codestreams
 
 **Current scope:**
 - JPEG 2000 Part 1 codestreams aimed at common DICOM usage
 - Single quality layer in the current encoder
-- HTJ2K decode support is currently single-layer only, but now includes real conformance-fixture validation
+- HTJ2K decode support is currently single-layer only, but now includes real conformance-fixture validation plus an HTJ2K `dcmdjp2k` DICOM regression
 - Lossless and basic lossy mode; quality tuning is not yet exposed as a user-facing option
 
 ---
