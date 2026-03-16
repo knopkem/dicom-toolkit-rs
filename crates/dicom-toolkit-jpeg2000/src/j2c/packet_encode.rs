@@ -12,6 +12,7 @@
 
 use alloc::vec::Vec;
 
+use super::codestream_write::BlockCodingMode;
 use super::tag_tree_encode::TagTreeEncoder;
 use crate::writer::BitWriter;
 
@@ -28,6 +29,8 @@ pub(crate) struct CodeBlockPacketData {
     pub(crate) previously_included: bool,
     /// L-block value (for segment length encoding, starts at 3).
     pub(crate) l_block: u32,
+    /// Block coder used for this contribution.
+    pub(crate) block_coding_mode: BlockCodingMode,
 }
 
 /// Information about a single subband's precinct.
@@ -119,16 +122,23 @@ pub(crate) fn form_packet(resolution: &mut ResolutionPacket) -> Vec<u8> {
                 continue;
             }
 
-            // Encode number of coding passes
-            encode_num_coding_passes(cb.num_coding_passes, &mut header_writer);
-
-            // Encode segment length increment (Lblock signaling)
-            header_writer.write_bit(0); // No Lblock increment
-
-            // Encode data length
             let data_len = cb.data.len() as u32;
-            let num_bits = bits_for_length(data_len, cb.l_block, cb.num_coding_passes);
-            header_writer.write_bits(data_len, num_bits as u8);
+            match cb.block_coding_mode {
+                BlockCodingMode::Classic => {
+                    let num_bits = bits_for_length(cb.l_block, cb.num_coding_passes);
+                    encode_num_coding_passes(cb.num_coding_passes, &mut header_writer);
+                    encode_length(data_len, &mut cb.l_block, num_bits, &mut header_writer);
+                }
+                BlockCodingMode::HighThroughput => {
+                    debug_assert!(
+                        cb.num_coding_passes <= 1,
+                        "current HT packet writer only supports cleanup-only contributions"
+                    );
+                    let num_bits = bits_for_ht_cleanup_length(cb.l_block, cb.num_coding_passes);
+                    encode_num_ht_coding_passes(cb.num_coding_passes, &mut header_writer);
+                    encode_length(data_len, &mut cb.l_block, num_bits, &mut header_writer);
+                }
+            }
 
             // Append code-block data to body
             body.extend_from_slice(&cb.data);
@@ -162,17 +172,57 @@ fn encode_num_coding_passes(num_passes: u8, writer: &mut BitWriter) {
     }
 }
 
-/// Calculate number of bits needed to encode a segment length.
-fn bits_for_length(length: u32, l_block: u32, num_coding_passes: u8) -> u32 {
-    if length == 0 {
-        return l_block;
+fn encode_num_ht_coding_passes(num_passes: u8, writer: &mut BitWriter) {
+    match num_passes {
+        1 => writer.write_bit(0),
+        2 => writer.write_bits(0b10, 2),
+        3..=5 => {
+            writer.write_bits(0b11, 2);
+            writer.write_bits(u32::from(num_passes - 3), 2);
+        }
+        6..=36 => {
+            writer.write_bits(0b11, 2);
+            writer.write_bits(0b11, 2);
+            writer.write_bits(u32::from(num_passes - 6), 5);
+        }
+        37..=164 => {
+            writer.write_bits(0b11, 2);
+            writer.write_bits(0b11, 2);
+            writer.write_bits(31, 5);
+            writer.write_bits(u32::from(num_passes - 37), 7);
+        }
+        _ => unreachable!("JPEG 2000 supports 1..=164 coding passes per contribution"),
     }
+}
+
+fn encode_length(length: u32, l_block: &mut u32, mut num_bits: u32, writer: &mut BitWriter) {
+    while !value_fits_in_bits(length, num_bits) {
+        writer.write_bit(1);
+        *l_block += 1;
+        num_bits += 1;
+    }
+    writer.write_bit(0);
+    writer.write_bits(length, num_bits as u8);
+}
+
+fn value_fits_in_bits(value: u32, bits: u32) -> bool {
+    bits >= u32::BITS || value < (1u32 << bits)
+}
+
+/// Calculate number of bits needed to encode a segment length.
+fn bits_for_length(l_block: u32, num_coding_passes: u8) -> u32 {
     let log2_passes = if num_coding_passes <= 1 {
         0
     } else {
         (num_coding_passes as u32).ilog2()
     };
     l_block + log2_passes
+}
+
+fn bits_for_ht_cleanup_length(l_block: u32, raw_num_passes: u8) -> u32 {
+    let placeholder_groups = u32::from(raw_num_passes.saturating_sub(1)) / 3;
+    let placeholder_passes = placeholder_groups * 3;
+    l_block + (placeholder_passes + 1).ilog2()
 }
 
 /// Form tile bitstream from resolution packets in LRCP order.
@@ -201,6 +251,31 @@ pub(crate) fn form_tile_bitstream(
 mod tests {
     use super::*;
     use crate::reader::BitReader;
+
+    fn decode_num_ht_coding_passes_for_test(data: &[u8]) -> Option<u8> {
+        let mut reader = BitReader::new(data);
+        let mut num_passes = 1u32;
+
+        if reader.read_bits_with_stuffing(1)? == 1 {
+            num_passes = 2;
+
+            if reader.read_bits_with_stuffing(1)? == 1 {
+                let extension = reader.read_bits_with_stuffing(2)?;
+                num_passes = 3 + extension;
+
+                if extension == 3 {
+                    let extension = reader.read_bits_with_stuffing(5)?;
+                    num_passes = 6 + extension;
+
+                    if extension == 31 {
+                        num_passes = 37 + reader.read_bits_with_stuffing(7)?;
+                    }
+                }
+            }
+        }
+
+        Some(num_passes as u8)
+    }
 
     fn decode_num_coding_passes_for_test(data: &[u8]) -> Option<u8> {
         let mut reader = BitReader::new(data);
@@ -241,6 +316,7 @@ mod tests {
                     num_zero_bitplanes: 31,
                     previously_included: false,
                     l_block: 3,
+                    block_coding_mode: BlockCodingMode::Classic,
                 }],
                 num_cbs_x: 1,
                 num_cbs_y: 1,
@@ -261,6 +337,7 @@ mod tests {
                     num_zero_bitplanes: 20,
                     previously_included: false,
                     l_block: 3,
+                    block_coding_mode: BlockCodingMode::Classic,
                 }],
                 num_cbs_x: 1,
                 num_cbs_y: 1,
@@ -282,6 +359,7 @@ mod tests {
                         num_zero_bitplanes: 20,
                         previously_included: false,
                         l_block: 3,
+                        block_coding_mode: BlockCodingMode::Classic,
                     }],
                     num_cbs_x: 1,
                     num_cbs_y: 1,
@@ -293,6 +371,7 @@ mod tests {
                         num_zero_bitplanes: 22,
                         previously_included: false,
                         l_block: 3,
+                        block_coding_mode: BlockCodingMode::Classic,
                     }],
                     num_cbs_x: 1,
                     num_cbs_y: 1,
@@ -304,6 +383,7 @@ mod tests {
                         num_zero_bitplanes: 24,
                         previously_included: false,
                         l_block: 3,
+                        block_coding_mode: BlockCodingMode::Classic,
                     }],
                     num_cbs_x: 1,
                     num_cbs_y: 1,
@@ -332,5 +412,39 @@ mod tests {
             let data = w.finish();
             assert_eq!(decode_num_coding_passes_for_test(&data), Some(num_passes));
         }
+    }
+
+    #[test]
+    fn test_encode_num_ht_passes_round_trip() {
+        for num_passes in [1u8, 2, 3, 4, 5, 6, 19, 37, 38, 100, 164] {
+            let mut w = BitWriter::new();
+            encode_num_ht_coding_passes(num_passes, &mut w);
+            let data = w.finish();
+            assert_eq!(
+                decode_num_ht_coding_passes_for_test(&data),
+                Some(num_passes)
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_empty_ht_packet() {
+        let mut resolution = ResolutionPacket {
+            subbands: vec![SubbandPrecinct {
+                code_blocks: vec![CodeBlockPacketData {
+                    data: vec![0x12, 0x34, 0x56],
+                    num_coding_passes: 1,
+                    num_zero_bitplanes: 20,
+                    previously_included: false,
+                    l_block: 3,
+                    block_coding_mode: BlockCodingMode::HighThroughput,
+                }],
+                num_cbs_x: 1,
+                num_cbs_y: 1,
+            }],
+        };
+
+        let packet = form_packet(&mut resolution);
+        assert!(packet.len() >= 3);
     }
 }

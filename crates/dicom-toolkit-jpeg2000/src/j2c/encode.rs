@@ -13,6 +13,7 @@ use super::build::SubBandType;
 use super::codestream_write::{self, BlockCodingMode, EncodeParams};
 use super::fdwt::{self, DwtDecomposition};
 use super::forward_mct;
+use super::ht_block_encode;
 use super::packet_encode::{self, CodeBlockPacketData, ResolutionPacket, SubbandPrecinct};
 use super::quantize::{self, QuantStepSize};
 
@@ -297,20 +298,17 @@ fn encode_subband(
                 }
             }
 
-            // Encode
-            if block_coding_mode == BlockCodingMode::HighThroughput
-                && cb_coeffs.iter().any(|&coefficient| coefficient != 0)
-            {
-                return Err("HTJ2K block encoding not implemented");
-            }
-
-            let encoded = bitplane_encode::encode_code_block(
-                &cb_coeffs,
-                cbw,
-                cbh,
-                sub_band_type,
-                total_bitplanes,
-            );
+            let encoded = if block_coding_mode == BlockCodingMode::HighThroughput {
+                ht_block_encode::encode_code_block(&cb_coeffs, cbw, cbh, total_bitplanes)?
+            } else {
+                bitplane_encode::encode_code_block(
+                    &cb_coeffs,
+                    cbw,
+                    cbh,
+                    sub_band_type,
+                    total_bitplanes,
+                )
+            };
 
             code_blocks.push(CodeBlockPacketData {
                 data: encoded.data,
@@ -318,6 +316,7 @@ fn encode_subband(
                 num_zero_bitplanes: encoded.num_zero_bitplanes,
                 previously_included: false,
                 l_block: 3,
+                block_coding_mode,
             });
         }
     }
@@ -551,26 +550,34 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_high_throughput_rejects_nonzero_blocks() {
-        let width = 4u32;
-        let height = 4u32;
-        let pixels: Vec<u8> = (0..(width * height)).map(|i| i as u8).collect();
+    fn test_encode_high_throughput_nonzero_roundtrip() {
+        let width = 1u32;
+        let height = 1u32;
+        let pixels = 2049u16.to_le_bytes().to_vec();
 
-        let error = encode_high_throughput_for_test(
+        let codestream = encode_high_throughput_for_test(
             &pixels,
             width,
             height,
             1,
-            8,
+            12,
             false,
             &EncodeOptions {
-                num_decomposition_levels: 2,
+                num_decomposition_levels: 0,
                 ..Default::default()
             },
         )
-        .expect_err("HT non-zero encode should fail");
+        .expect("HT non-zero encode");
 
-        assert_eq!(error, "HTJ2K block encoding not implemented");
+        assert!(codestream.windows(2).any(|window| window == [0xFF, 0x50]));
+        let image =
+            Image::new(&codestream, &DecodeSettings::default()).expect("parse HT codestream");
+        let decoded = image.decode_native().expect("decode HT codestream");
+
+        assert_eq!(decoded.width, width);
+        assert_eq!(decoded.height, height);
+        assert_eq!(decoded.bit_depth, 12);
+        assert_eq!(decoded.data, pixels);
     }
 
     #[test]
