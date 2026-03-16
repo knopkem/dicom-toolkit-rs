@@ -340,6 +340,12 @@ impl fmt::Display for PersonName {
 
 // ── PixelData ─────────────────────────────────────────────────────────────────
 
+/// One compressed frame worth of encapsulated Pixel Data fragments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncapsulatedFrame {
+    pub fragments: Vec<Vec<u8>>,
+}
+
 /// Pixel data stored either as native (uncompressed) bytes or encapsulated
 /// (compressed) fragments.
 #[derive(Debug, Clone, PartialEq)]
@@ -358,6 +364,58 @@ impl PixelData {
     pub fn encapsulated_frames(&self, number_of_frames: u32) -> DcmResult<Vec<Vec<u8>>> {
         encapsulated_frames(self, number_of_frames)
     }
+}
+
+/// Build encapsulated Pixel Data from per-frame compressed fragments.
+///
+/// Basic Offset Table entries are generated on fragment-item boundaries, using
+/// the same `8 + fragment.len()` accounting expected by [`encapsulated_frames`].
+pub fn build_encapsulated_pixel_data(frames: &[EncapsulatedFrame]) -> DcmResult<PixelData> {
+    if frames.is_empty() {
+        return Err(DcmError::Other(
+            "build_encapsulated_pixel_data requires at least one frame".into(),
+        ));
+    }
+
+    let mut offset_table = Vec::with_capacity(frames.len());
+    let mut fragments = Vec::new();
+    let mut offset = 0u32;
+
+    for (frame_index, frame) in frames.iter().enumerate() {
+        if frame.fragments.is_empty() {
+            return Err(DcmError::Other(format!(
+                "encapsulated frame {} has no fragments",
+                frame_index + 1
+            )));
+        }
+
+        offset_table.push(offset);
+        for fragment in &frame.fragments {
+            offset = offset
+                .checked_add(fragment_item_length(fragment)?)
+                .ok_or_else(|| {
+                    DcmError::Other("fragment stream exceeds u32 offset range".into())
+                })?;
+            fragments.push(fragment.clone());
+        }
+    }
+
+    Ok(PixelData::Encapsulated {
+        offset_table,
+        fragments,
+    })
+}
+
+/// Convenience helper for the common one-fragment-per-frame case.
+pub fn encapsulated_pixel_data_from_frames(frames: &[Vec<u8>]) -> DcmResult<PixelData> {
+    let frames: Vec<EncapsulatedFrame> = frames
+        .iter()
+        .cloned()
+        .map(|fragment| EncapsulatedFrame {
+            fragments: vec![fragment],
+        })
+        .collect();
+    build_encapsulated_pixel_data(&frames)
 }
 
 /// Split encapsulated pixel data into per-frame compressed payloads.
@@ -1131,5 +1189,50 @@ mod tests {
 
         let err = encapsulated_frames(&pixel_data, 2).unwrap_err();
         assert!(err.to_string().contains("does not align"));
+    }
+
+    #[test]
+    fn build_encapsulated_pixel_data_uses_fragment_item_boundaries() {
+        let pixel_data = encapsulated_pixel_data_from_frames(&[vec![1, 2, 3], vec![4, 5]]).unwrap();
+
+        match pixel_data {
+            PixelData::Encapsulated {
+                offset_table,
+                fragments,
+            } => {
+                assert_eq!(offset_table, vec![0, 11]);
+                assert_eq!(fragments, vec![vec![1, 2, 3], vec![4, 5]]);
+            }
+            PixelData::Native { .. } => panic!("expected encapsulated pixel data"),
+        }
+    }
+
+    #[test]
+    fn build_encapsulated_pixel_data_handles_multi_fragment_frames() {
+        let pixel_data = build_encapsulated_pixel_data(&[
+            EncapsulatedFrame {
+                fragments: vec![vec![1, 2], vec![3, 4, 5, 6]],
+            },
+            EncapsulatedFrame {
+                fragments: vec![vec![7, 8, 9]],
+            },
+        ])
+        .unwrap();
+
+        match &pixel_data {
+            PixelData::Encapsulated { offset_table, .. } => {
+                assert_eq!(offset_table, &vec![0, 22]);
+            }
+            PixelData::Native { .. } => panic!("expected encapsulated pixel data"),
+        }
+
+        let frames = encapsulated_frames(&pixel_data, 2).unwrap();
+        assert_eq!(frames, vec![vec![1, 2, 3, 4, 5, 6], vec![7, 8, 9]]);
+    }
+
+    #[test]
+    fn build_encapsulated_pixel_data_rejects_empty_frames() {
+        assert!(build_encapsulated_pixel_data(&[]).is_err());
+        assert!(build_encapsulated_pixel_data(&[EncapsulatedFrame { fragments: vec![] }]).is_err());
     }
 }

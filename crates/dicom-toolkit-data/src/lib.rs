@@ -21,5 +21,6 @@ pub use file_format::FileFormat;
 pub use io::{element_value_bytes, DicomReader, DicomWriter};
 pub use meta_info::FileMetaInformation;
 pub use value::{
-    encapsulated_frames, DicomDate, DicomDateTime, DicomTime, PersonName, PixelData, Value,
+    build_encapsulated_pixel_data, encapsulated_frames, encapsulated_pixel_data_from_frames,
+    DicomDate, DicomDateTime, DicomTime, EncapsulatedFrame, PersonName, PixelData, Value,
 };

@@ -11,7 +11,7 @@ use dicom_toolkit_codec::jpeg_ls::encoder::encode_jpeg_ls;
 use dicom_toolkit_codec::registry::GLOBAL_REGISTRY;
 use dicom_toolkit_data::value::Value::{Ints, Strings, U16, U32};
 use dicom_toolkit_data::value::{PixelData, Value};
-use dicom_toolkit_data::{DataSet, FileFormat};
+use dicom_toolkit_data::{encapsulated_pixel_data_from_frames, DataSet, FileFormat};
 use dicom_toolkit_dict::tags;
 
 const TS_JPEGLS_LOSSLESS: &str = "1.2.840.10008.1.2.4.80";
@@ -220,13 +220,12 @@ fn main() {
     out_ff.meta.transfer_syntax_uid = ts_uid.to_string();
 
     // Replace pixel data with encapsulated JPEG-LS fragment(s).
-    let pixel_data = PixelData::Encapsulated {
-        offset_table: if number_of_frames == 1 {
-            vec![0]
-        } else {
-            vec![]
-        },
-        fragments,
+    let pixel_data = match encapsulated_pixel_data_from_frames(&fragments) {
+        Ok(pixel_data) => pixel_data,
+        Err(e) => {
+            eprintln!("Error constructing encapsulated JPEG-LS Pixel Data: {e}");
+            process::exit(1);
+        }
     };
     out_ff.dataset.insert(dicom_toolkit_data::Element {
         tag: tags::PIXEL_DATA,

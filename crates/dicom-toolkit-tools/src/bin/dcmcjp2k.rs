@@ -12,7 +12,7 @@ use dicom_toolkit_codec::registry::GLOBAL_REGISTRY;
 use dicom_toolkit_core::uid::transfer_syntax;
 use dicom_toolkit_data::value::Value::{Ints, Strings, U16, U32};
 use dicom_toolkit_data::value::{PixelData, Value};
-use dicom_toolkit_data::{DataSet, FileFormat};
+use dicom_toolkit_data::{encapsulated_pixel_data_from_frames, DataSet, FileFormat};
 use dicom_toolkit_dict::tags;
 
 const TS_JPEG2000_LOSSLESS: &str = transfer_syntax::JPEG_2000_LOSSLESS;
@@ -222,13 +222,17 @@ fn main() {
 
     let mut out_ff = ff.clone();
     out_ff.meta.transfer_syntax_uid = ts_uid.to_string();
+    let pixel_data = match encapsulated_pixel_data_from_frames(&fragments) {
+        Ok(pixel_data) => pixel_data,
+        Err(e) => {
+            eprintln!("Error constructing encapsulated {compression_name} Pixel Data: {e}");
+            process::exit(1);
+        }
+    };
     out_ff.dataset.insert(dicom_toolkit_data::Element {
         tag: tags::PIXEL_DATA,
         vr: dicom_toolkit_dict::Vr::OB,
-        value: Value::PixelData(PixelData::Encapsulated {
-            offset_table: vec![],
-            fragments,
-        }),
+        value: Value::PixelData(pixel_data),
     });
 
     if !lossless {

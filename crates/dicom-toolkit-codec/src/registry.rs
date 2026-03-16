@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, RwLock};
 
 use dicom_toolkit_core::error::{DcmError, DcmResult};
-use dicom_toolkit_data::value::PixelData;
+use dicom_toolkit_data::{encapsulated_pixel_data_from_frames, value::PixelData};
 use dicom_toolkit_dict::ts::transfer_syntaxes;
 
 // ── ImageCodec trait ──────────────────────────────────────────────────────────
@@ -121,10 +121,7 @@ impl ImageCodec for RleCodec {
     ) -> DcmResult<PixelData> {
         let encoded =
             crate::rle::rle_encode_frame(pixels, rows, columns, samples_per_pixel, bits_allocated)?;
-        Ok(PixelData::Encapsulated {
-            offset_table: vec![0],
-            fragments: vec![encoded],
-        })
+        encapsulated_pixel_data_from_frames(&[encoded])
     }
 }
 
@@ -188,10 +185,7 @@ impl ImageCodec for JpegCodec {
             samples_per_pixel,
             &JpegParams::default(),
         )?;
-        Ok(PixelData::Encapsulated {
-            offset_table: vec![0],
-            fragments: vec![encoded],
-        })
+        encapsulated_pixel_data_from_frames(&[encoded])
     }
 }
 
@@ -244,10 +238,7 @@ impl ImageCodec for JpegLsCodec {
             samples_per_pixel,
             near,
         )?;
-        Ok(PixelData::Encapsulated {
-            offset_table: vec![],
-            fragments: vec![encoded],
-        })
+        encapsulated_pixel_data_from_frames(&[encoded])
     }
 }
 
@@ -337,10 +328,7 @@ fn encode_jp2k_pixel_data(
         )?
     };
 
-    Ok(PixelData::Encapsulated {
-        offset_table: vec![],
-        fragments: vec![encoded],
-    })
+    encapsulated_pixel_data_from_frames(&[encoded])
 }
 
 impl ImageCodec for Jp2kDecodeCodec {
