@@ -979,11 +979,70 @@ fn decode_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::j2c::ht_block_encode::encode_code_block;
 
     #[test]
     fn test_coefficient_to_i32_shifted_alignment() {
         let aligned = 3u32 << (31 - 5);
         assert_eq!(coefficient_to_i32(aligned, 5), 3);
         assert_eq!(coefficient_to_i32(0x8000_0000 | aligned, 5), -3);
+    }
+
+    #[test]
+    fn test_direct_ht_block_roundtrip_varied_4x4() {
+        let original: Vec<i32> = (0..16).map(|i| (i * 3) - 20).collect();
+        let total_bitplanes = 6u8;
+        let encoded = encode_code_block(&original, 4, 4, total_bitplanes).expect("encode HT block");
+        assert_eq!(encoded.num_coding_passes, 1);
+
+        let mut decoded = vec![0u32; original.len()];
+        let decoded_ok = decode_impl(
+            &encoded.data,
+            &mut decoded,
+            u32::from(encoded.num_zero_bitplanes),
+            u32::from(encoded.num_coding_passes),
+            encoded.data.len() as u32,
+            0,
+            4,
+            4,
+            4,
+            false,
+        );
+        assert!(decoded_ok.is_some(), "encoded={:02x?}", encoded.data);
+
+        let decoded_i32: Vec<i32> = decoded
+            .into_iter()
+            .map(|value| coefficient_to_i32(value, total_bitplanes))
+            .collect();
+        assert_eq!(decoded_i32, original, "encoded={:02x?}", encoded.data);
+    }
+
+    #[test]
+    fn test_direct_ht_block_roundtrip_positive_varied_4x4() {
+        let original: Vec<i32> = (0..16).map(|i| i * 3).collect();
+        let total_bitplanes = 6u8;
+        let encoded = encode_code_block(&original, 4, 4, total_bitplanes).expect("encode HT block");
+        assert_eq!(encoded.num_coding_passes, 1);
+
+        let mut decoded = vec![0u32; original.len()];
+        let decoded_ok = decode_impl(
+            &encoded.data,
+            &mut decoded,
+            u32::from(encoded.num_zero_bitplanes),
+            u32::from(encoded.num_coding_passes),
+            encoded.data.len() as u32,
+            0,
+            4,
+            4,
+            4,
+            false,
+        );
+        assert!(decoded_ok.is_some(), "encoded={:02x?}", encoded.data);
+
+        let decoded_i32: Vec<i32> = decoded
+            .into_iter()
+            .map(|value| coefficient_to_i32(value, total_bitplanes))
+            .collect();
+        assert_eq!(decoded_i32, original, "encoded={:02x?}", encoded.data);
     }
 }

@@ -253,7 +253,13 @@ impl ImageCodec for JpegLsCodec {
 
 // ── JPEG 2000 codec ───────────────────────────────────────────────────────────
 
-struct Jp2kRegistryCodec;
+struct Jp2kDecodeCodec;
+
+struct Jp2kEncodeCodec {
+    transfer_syntax_uid: &'static str,
+    high_throughput: bool,
+    lossless: bool,
+}
 
 const JP2K_DECODE_TRANSFER_SYNTAXES: &[&str] = &[
     transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
@@ -263,22 +269,87 @@ const JP2K_DECODE_TRANSFER_SYNTAXES: &[&str] = &[
     transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid,
 ];
 
-const JP2K_ENCODE_TRANSFER_SYNTAXES: &[&str] = &[
-    transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
-    transfer_syntaxes::JPEG_2000.uid,
-];
+const NO_TRANSFER_SYNTAXES: &[&str] = &[];
 
-impl ImageCodec for Jp2kRegistryCodec {
-    fn transfer_syntax_uids(&self) -> &[&str] {
-        JP2K_ENCODE_TRANSFER_SYNTAXES
+impl Jp2kEncodeCodec {
+    const fn new(transfer_syntax_uid: &'static str, high_throughput: bool, lossless: bool) -> Self {
+        Self {
+            transfer_syntax_uid,
+            high_throughput,
+            lossless,
+        }
     }
 
-    fn decode_transfer_syntax_uids(&self) -> &[&str] {
+    fn codec_name(&self) -> &'static str {
+        if self.high_throughput {
+            "HTJ2K"
+        } else {
+            "JPEG 2000"
+        }
+    }
+}
+
+fn decode_jp2k_pixel_data(pixel_data: &PixelData) -> DcmResult<Vec<u8>> {
+    let fragments = match pixel_data {
+        PixelData::Encapsulated { fragments, .. } => fragments,
+        PixelData::Native { bytes } => return Ok(bytes.clone()),
+    };
+
+    let mut all_pixels = Vec::new();
+    for fragment in fragments {
+        if fragment.is_empty() {
+            continue;
+        }
+        let decoded = crate::jp2k::decoder::decode_jp2k(fragment)?;
+        all_pixels.extend_from_slice(&decoded.pixels);
+    }
+
+    Ok(all_pixels)
+}
+
+fn encode_jp2k_pixel_data(
+    codec: &Jp2kEncodeCodec,
+    pixels: &[u8],
+    rows: u16,
+    columns: u16,
+    samples_per_pixel: u8,
+    bits_allocated: u8,
+    bits_stored: u8,
+) -> DcmResult<PixelData> {
+    validate_stored_bits(codec.codec_name(), bits_allocated, bits_stored)?;
+    let encoded = if codec.high_throughput {
+        crate::jp2k::encoder::encode_htj2k(
+            pixels,
+            columns as u32,
+            rows as u32,
+            bits_stored,
+            samples_per_pixel,
+            codec.lossless,
+        )?
+    } else {
+        crate::jp2k::encoder::encode_jp2k(
+            pixels,
+            columns as u32,
+            rows as u32,
+            bits_stored,
+            samples_per_pixel,
+            codec.lossless,
+        )?
+    };
+
+    Ok(PixelData::Encapsulated {
+        offset_table: vec![],
+        fragments: vec![encoded],
+    })
+}
+
+impl ImageCodec for Jp2kDecodeCodec {
+    fn transfer_syntax_uids(&self) -> &[&str] {
         JP2K_DECODE_TRANSFER_SYNTAXES
     }
 
     fn encode_transfer_syntax_uids(&self) -> &[&str] {
-        JP2K_ENCODE_TRANSFER_SYNTAXES
+        NO_TRANSFER_SYNTAXES
     }
 
     fn decode(
@@ -289,19 +360,38 @@ impl ImageCodec for Jp2kRegistryCodec {
         _samples_per_pixel: u8,
         _bits_allocated: u8,
     ) -> DcmResult<Vec<u8>> {
-        let fragments = match pixel_data {
-            PixelData::Encapsulated { fragments, .. } => fragments,
-            PixelData::Native { bytes } => return Ok(bytes.clone()),
-        };
-        let mut all_pixels = Vec::new();
-        for fragment in fragments {
-            if fragment.is_empty() {
-                continue;
-            }
-            let decoded = crate::jp2k::decoder::decode_jp2k(fragment)?;
-            all_pixels.extend_from_slice(&decoded.pixels);
-        }
-        Ok(all_pixels)
+        decode_jp2k_pixel_data(pixel_data)
+    }
+
+    fn encode(
+        &self,
+        _pixels: &[u8],
+        _rows: u16,
+        _columns: u16,
+        _samples_per_pixel: u8,
+        _bits_allocated: u8,
+        _bits_stored: u8,
+    ) -> DcmResult<PixelData> {
+        Err(DcmError::CompressionError {
+            reason: "JPEG 2000 encoding is not available for this transfer syntax".to_string(),
+        })
+    }
+}
+
+impl ImageCodec for Jp2kEncodeCodec {
+    fn transfer_syntax_uids(&self) -> &[&str] {
+        std::slice::from_ref(&self.transfer_syntax_uid)
+    }
+
+    fn decode(
+        &self,
+        pixel_data: &PixelData,
+        _rows: u16,
+        _columns: u16,
+        _samples_per_pixel: u8,
+        _bits_allocated: u8,
+    ) -> DcmResult<Vec<u8>> {
+        decode_jp2k_pixel_data(pixel_data)
     }
 
     fn encode(
@@ -313,21 +403,15 @@ impl ImageCodec for Jp2kRegistryCodec {
         bits_allocated: u8,
         bits_stored: u8,
     ) -> DcmResult<PixelData> {
-        validate_stored_bits("JPEG 2000", bits_allocated, bits_stored)?;
-        // TS .90 is lossless-only; .91 supports both (default to lossless).
-        let lossless = true;
-        let encoded = crate::jp2k::encoder::encode_jp2k(
+        encode_jp2k_pixel_data(
+            self,
             pixels,
-            columns as u32,
-            rows as u32,
-            bits_stored,
+            rows,
+            columns,
             samples_per_pixel,
-            lossless,
-        )?;
-        Ok(PixelData::Encapsulated {
-            offset_table: vec![],
-            fragments: vec![encoded],
-        })
+            bits_allocated,
+            bits_stored,
+        )
     }
 }
 
@@ -445,7 +529,29 @@ pub static GLOBAL_REGISTRY: LazyLock<CodecRegistry> = LazyLock::new(|| {
     reg.register(Arc::new(RleCodec));
     reg.register(Arc::new(JpegCodec::baseline()));
     reg.register(Arc::new(JpegLsCodec));
-    reg.register(Arc::new(Jp2kRegistryCodec));
+    reg.register(Arc::new(Jp2kDecodeCodec));
+    reg.register(Arc::new(Jp2kEncodeCodec::new(
+        transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
+        false,
+        true,
+    )));
+    reg.register(Arc::new(Jp2kEncodeCodec::new(
+        transfer_syntaxes::JPEG_2000.uid,
+        false,
+        true,
+    )));
+    reg.register(Arc::new(Jp2kEncodeCodec::new(
+        transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid,
+        true,
+        true,
+    )));
+    // `.203` supports both lossless and lossy streams, but the registry encode
+    // API has no quality selection, so default to a lossless HTJ2K stream here.
+    reg.register(Arc::new(Jp2kEncodeCodec::new(
+        transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid,
+        true,
+        true,
+    )));
     reg
 });
 
@@ -566,8 +672,18 @@ mod tests {
     }
 
     #[test]
-    fn global_registry_does_not_expose_decode_only_htj2k_as_generic_codec() {
-        let codec = GLOBAL_REGISTRY.find(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid);
+    fn global_registry_exposes_htj2k_encoder_variants() {
+        let lossless =
+            GLOBAL_REGISTRY.find(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid);
+        let generic = GLOBAL_REGISTRY.find(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid);
+        assert!(lossless.is_some());
+        assert!(generic.is_some());
+    }
+
+    #[test]
+    fn global_registry_keeps_htj2k_rpcl_decode_only() {
+        let codec = GLOBAL_REGISTRY
+            .find(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid);
         assert!(codec.is_none());
     }
 
@@ -735,6 +851,35 @@ mod tests {
             PixelData::Native { .. } => panic!("expected encapsulated pixel data"),
         };
 
+        let decoded = crate::jp2k::decoder::decode_jp2k(&fragment).unwrap();
+        assert_eq!(decoded.bits_per_sample, bits_stored);
+        assert_eq!(decoded.pixels, pixels);
+    }
+
+    #[test]
+    fn htj2k_codec_encode_uses_bits_stored_precision() {
+        let rows = 4u16;
+        let cols = 4u16;
+        let samples = 1u8;
+        let bits_allocated = 16u8;
+        let bits_stored = 12u8;
+        let mut pixels = Vec::with_capacity(32);
+        for _ in 0..16 {
+            pixels.extend_from_slice(&2048u16.to_le_bytes());
+        }
+
+        let codec = GLOBAL_REGISTRY
+            .find(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid)
+            .unwrap();
+        let encoded = codec
+            .encode(&pixels, rows, cols, samples, bits_allocated, bits_stored)
+            .unwrap();
+        let fragment = match encoded {
+            PixelData::Encapsulated { fragments, .. } => fragments.into_iter().next().unwrap(),
+            PixelData::Native { .. } => panic!("expected encapsulated pixel data"),
+        };
+
+        assert!(fragment.windows(2).any(|window| window == [0xFF, 0x50]));
         let decoded = crate::jp2k::decoder::decode_jp2k(&fragment).unwrap();
         assert_eq!(decoded.bits_per_sample, bits_stored);
         assert_eq!(decoded.pixels, pixels);

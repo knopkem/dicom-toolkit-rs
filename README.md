@@ -442,18 +442,19 @@ dcmcjpls -v image.dcm /tmp/compressed.dcm
 dcmdjpls -v /tmp/compressed.dcm /tmp/roundtrip.dcm
 ```
 
-### `dcmcjp2k` — compress DICOM to JPEG 2000
+### `dcmcjp2k` — compress DICOM to JPEG 2000 / HTJ2K
 
 ```
 dcmcjp2k [OPTIONS] <INPUT> <OUTPUT>
 
 Arguments:
   <INPUT>   Input DICOM file (uncompressed or decompressible)
-  <OUTPUT>  Output DICOM file (JPEG 2000 compressed)
+  <OUTPUT>  Output DICOM file (JPEG 2000 or HTJ2K compressed)
 
 Options:
   -l, --encode-lossless   Force lossless JPEG 2000 (default)
       --encode-lossy      Use irreversible JPEG 2000
+      --htj2k             Use High-Throughput JPEG 2000; combine with --encode-lossy for TS .203
   -v, --verbose
 ```
 
@@ -466,9 +467,20 @@ dcmcjp2k image.dcm image_j2k.dcm
 # Irreversible/lossy JPEG 2000 (TS .91)
 dcmcjp2k --encode-lossy -v image.dcm image_j2k_lossy.dcm
 
+# HTJ2K lossless (TS .201)
+dcmcjp2k --htj2k image.dcm image_htj2k.dcm
+
+# HTJ2K generic transfer syntax (TS .203)
+dcmcjp2k --htj2k --encode-lossy -v image.dcm image_htj2k_lossy.dcm
+
 # Batch compress
 for f in study/*.dcm; do dcmcjp2k "$f" "jp2k/$(basename "$f")"; done
 ```
+
+HTJ2K lossless output is self-validated before `dcmcjp2k` writes it. If the
+current encoder cannot produce a decodable lossless codestream for a given
+image, the command fails with an explicit error instead of emitting a corrupt
+file.
 
 ### `dcmdjp2k` — decompress JPEG 2000 / HTJ2K DICOM
 

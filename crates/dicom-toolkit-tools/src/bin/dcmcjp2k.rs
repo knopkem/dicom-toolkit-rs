@@ -7,22 +7,25 @@ use std::process;
 
 use clap::Parser;
 
-use dicom_toolkit_codec::jp2k::encoder::encode_jp2k;
+use dicom_toolkit_codec::jp2k::encoder::{encode_htj2k, encode_jp2k};
 use dicom_toolkit_codec::registry::GLOBAL_REGISTRY;
+use dicom_toolkit_core::uid::transfer_syntax;
 use dicom_toolkit_data::value::{PixelData, Value};
 use dicom_toolkit_data::FileFormat;
 use dicom_toolkit_dict::tags;
 
-const TS_JPEG2000_LOSSLESS: &str = "1.2.840.10008.1.2.4.90";
-const TS_JPEG2000_LOSSY: &str = "1.2.840.10008.1.2.4.91";
+const TS_JPEG2000_LOSSLESS: &str = transfer_syntax::JPEG_2000_LOSSLESS;
+const TS_JPEG2000_LOSSY: &str = transfer_syntax::JPEG_2000;
+const TS_HTJ2K_LOSSLESS: &str = transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY;
+const TS_HTJ2K: &str = transfer_syntax::HIGH_THROUGHPUT_JPEG_2000;
 
 #[derive(Parser)]
 #[command(
     name = "dcmcjp2k",
     about = "Encode DICOM file with JPEG 2000 transfer syntax",
     long_about = "Reads a DICOM file and re-encodes the pixel data using JPEG 2000\n\
-                  compression. Writes a DICOM Part 10 file with JPEG 2000 Lossless\n\
-                  or JPEG 2000 transfer syntax."
+                  or High-Throughput JPEG 2000 compression. Writes a DICOM Part 10\n\
+                  file with the matching JPEG 2000 or HTJ2K transfer syntax."
 )]
 struct Args {
     /// Input DICOM file
@@ -41,6 +44,10 @@ struct Args {
     #[arg(long = "encode-lossy", conflicts_with = "lossless")]
     lossy: bool,
 
+    /// Use High-Throughput JPEG 2000 block coding (HTJ2K / Part 15)
+    #[arg(long = "htj2k")]
+    htj2k: bool,
+
     /// Verbose output
     #[arg(short = 'v', long)]
     verbose: bool,
@@ -49,6 +56,12 @@ struct Args {
 fn main() {
     let args = Args::parse();
     let lossless = !args.lossy;
+    let (ts_uid, compression_name) = match (args.htj2k, lossless) {
+        (false, true) => (TS_JPEG2000_LOSSLESS, "JPEG 2000 Lossless"),
+        (false, false) => (TS_JPEG2000_LOSSY, "JPEG 2000"),
+        (true, true) => (TS_HTJ2K_LOSSLESS, "HTJ2K Lossless"),
+        (true, false) => (TS_HTJ2K, "HTJ2K"),
+    };
 
     let ff = match FileFormat::open(&args.input) {
         Ok(ff) => ff,
@@ -87,14 +100,15 @@ fn main() {
 
     if args.verbose {
         eprintln!(
-            "Input: {}x{}, {} bit allocated ({} stored), {} component(s), {} frame(s), TS: {}",
+            "Input: {}x{}, {} bit allocated ({} stored), {} component(s), {} frame(s), TS: {}, target: {}",
             cols,
             rows,
             bits_allocated,
             bits_stored,
             samples_per_pixel,
             number_of_frames,
-            ff.meta.transfer_syntax_uid
+            ff.meta.transfer_syntax_uid,
+            compression_name,
         );
     }
 
@@ -169,17 +183,28 @@ fn main() {
         let start = frame_idx * frame_size;
         let end = start + frame_size;
         let frame_pixels = &raw_pixels[start..end];
-        let encoded = match encode_jp2k(
-            frame_pixels,
-            cols as u32,
-            rows as u32,
-            bits_stored,
-            samples_per_pixel,
-            lossless,
-        ) {
+        let encoded = match if args.htj2k {
+            encode_htj2k(
+                frame_pixels,
+                cols as u32,
+                rows as u32,
+                bits_stored,
+                samples_per_pixel,
+                lossless,
+            )
+        } else {
+            encode_jp2k(
+                frame_pixels,
+                cols as u32,
+                rows as u32,
+                bits_stored,
+                samples_per_pixel,
+                lossless,
+            )
+        } {
             Ok(data) => data,
             Err(e) => {
-                eprintln!("Error encoding JPEG 2000 frame {frame_idx}: {e}");
+                eprintln!("Error encoding {compression_name} frame {frame_idx}: {e}");
                 process::exit(1);
             }
         };
@@ -190,17 +215,11 @@ fn main() {
         let total_encoded: usize = fragments.iter().map(|f| f.len()).sum();
         let ratio = raw_pixels.len() as f64 / total_encoded.max(1) as f64;
         eprintln!(
-            "JPEG 2000 encoded: {} frame(s), {} bytes total (compression ratio {ratio:.1}:1)",
+            "{compression_name} encoded: {} frame(s), {} bytes total (compression ratio {ratio:.1}:1)",
             fragments.len(),
             total_encoded
         );
     }
-
-    let ts_uid = if lossless {
-        TS_JPEG2000_LOSSLESS
-    } else {
-        TS_JPEG2000_LOSSY
-    };
 
     let mut out_ff = ff.clone();
     out_ff.meta.transfer_syntax_uid = ts_uid.to_string();
@@ -227,11 +246,7 @@ fn main() {
                 eprintln!(
                     "Written: {} (TS: {})",
                     args.output.display(),
-                    if lossless {
-                        "JPEG 2000 Lossless"
-                    } else {
-                        "JPEG 2000"
-                    }
+                    compression_name
                 );
             }
         }

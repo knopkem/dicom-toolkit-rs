@@ -16,7 +16,7 @@ images are supported.
 
 The crate offers both a high-level 8-bit decode path for general image use and
 a native-bit-depth decode path for integrations such as DICOM, plus encoder APIs
-for emitting raw JPEG 2000 codestreams.
+for emitting raw JPEG 2000 and HTJ2K codestreams.
 
 # Example
 ```rust,no_run
@@ -95,7 +95,7 @@ pub use error::{
     ColorError, DecodeError, DecodingError, FormatError, MarkerError, Result, TileError,
     ValidationError,
 };
-pub use j2c::encode::{encode, EncodeOptions};
+pub use j2c::encode::{encode, encode_htj2k, EncodeOptions};
 pub use j2c::DecoderContext;
 
 mod j2c;

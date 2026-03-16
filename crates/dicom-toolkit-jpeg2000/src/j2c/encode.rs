@@ -16,6 +16,7 @@ use super::forward_mct;
 use super::ht_block_encode;
 use super::packet_encode::{self, CodeBlockPacketData, ResolutionPacket, SubbandPrecinct};
 use super::quantize::{self, QuantStepSize};
+use crate::{DecodeSettings, Image};
 
 /// Encoding options for JPEG 2000.
 #[derive(Debug, Clone)]
@@ -30,6 +31,8 @@ pub struct EncodeOptions {
     pub code_block_height_exp: u8,
     /// Number of guard bits (default: 1 for reversible, 2 for irreversible).
     pub guard_bits: u8,
+    /// Encode using HT block coding (HTJ2K / Part 15) instead of classic EBCOT.
+    pub use_ht_block_coding: bool,
 }
 
 impl Default for EncodeOptions {
@@ -40,6 +43,7 @@ impl Default for EncodeOptions {
             code_block_width_exp: 4,
             code_block_height_exp: 4,
             guard_bits: 1,
+            use_ht_block_coding: false,
         }
     }
 }
@@ -66,7 +70,8 @@ pub fn encode(
     signed: bool,
     options: &EncodeOptions,
 ) -> Result<Vec<u8>, &'static str> {
-    encode_impl(
+    let block_coding_mode = block_coding_mode(options);
+    let codestream = encode_impl(
         pixels,
         width,
         height,
@@ -74,8 +79,85 @@ pub fn encode(
         bit_depth,
         signed,
         options,
-        BlockCodingMode::Classic,
+        block_coding_mode,
+    )?;
+
+    if block_coding_mode == BlockCodingMode::HighThroughput {
+        validate_htj2k_codestream(
+            &codestream,
+            pixels,
+            width,
+            height,
+            num_components,
+            bit_depth,
+            options.reversible,
+        )?;
+    }
+
+    Ok(codestream)
+}
+
+/// Encode pixel data into an HTJ2K codestream.
+///
+/// Lossless HTJ2K output is self-validated before it is returned.
+pub fn encode_htj2k(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    num_components: u8,
+    bit_depth: u8,
+    signed: bool,
+    options: &EncodeOptions,
+) -> Result<Vec<u8>, &'static str> {
+    let mut options = options.clone();
+    options.use_ht_block_coding = true;
+    encode(
+        pixels,
+        width,
+        height,
+        num_components,
+        bit_depth,
+        signed,
+        &options,
     )
+}
+
+fn block_coding_mode(options: &EncodeOptions) -> BlockCodingMode {
+    if options.use_ht_block_coding {
+        BlockCodingMode::HighThroughput
+    } else {
+        BlockCodingMode::Classic
+    }
+}
+
+fn validate_htj2k_codestream(
+    codestream: &[u8],
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    num_components: u8,
+    bit_depth: u8,
+    reversible: bool,
+) -> Result<(), &'static str> {
+    let image = Image::new(codestream, &DecodeSettings::default())
+        .map_err(|_| "generated HTJ2K codestream failed self-validation")?;
+    let decoded = image
+        .decode_native()
+        .map_err(|_| "generated HTJ2K codestream failed self-validation")?;
+
+    if decoded.width != width
+        || decoded.height != height
+        || decoded.bit_depth != bit_depth
+        || decoded.num_components != num_components
+    {
+        return Err("generated HTJ2K codestream failed self-validation");
+    }
+
+    if reversible && decoded.data != pixels {
+        return Err("generated HTJ2K codestream did not roundtrip");
+    }
+
+    Ok(())
 }
 
 fn encode_impl(
@@ -385,28 +467,6 @@ fn max_decomposition_levels(width: u32, height: u32) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DecodeSettings, Image};
-
-    fn encode_high_throughput_for_test(
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-        num_components: u8,
-        bit_depth: u8,
-        signed: bool,
-        options: &EncodeOptions,
-    ) -> Result<Vec<u8>, &'static str> {
-        encode_impl(
-            pixels,
-            width,
-            height,
-            num_components,
-            bit_depth,
-            signed,
-            options,
-            BlockCodingMode::HighThroughput,
-        )
-    }
 
     #[test]
     fn test_encode_8bit_gray() {
@@ -518,7 +578,7 @@ mod tests {
             pixels.extend_from_slice(&sample);
         }
 
-        let codestream = encode_high_throughput_for_test(
+        let codestream = encode(
             &pixels,
             width,
             height,
@@ -527,6 +587,7 @@ mod tests {
             false,
             &EncodeOptions {
                 num_decomposition_levels: 2,
+                use_ht_block_coding: true,
                 ..Default::default()
             },
         )
@@ -555,7 +616,7 @@ mod tests {
         let height = 1u32;
         let pixels = 2049u16.to_le_bytes().to_vec();
 
-        let codestream = encode_high_throughput_for_test(
+        let codestream = encode_htj2k(
             &pixels,
             width,
             height,
@@ -577,6 +638,65 @@ mod tests {
         assert_eq!(decoded.width, width);
         assert_eq!(decoded.height, height);
         assert_eq!(decoded.bit_depth, 12);
+        assert_eq!(decoded.data, pixels);
+    }
+
+    #[test]
+    fn test_encode_high_throughput_varied_12bit_roundtrip() {
+        let mut pixels = Vec::with_capacity(32);
+        for i in 0u16..16 {
+            pixels.extend_from_slice(&((i * 257) & 0x0FFF).to_le_bytes());
+        }
+
+        let codestream = encode_htj2k(
+            &pixels,
+            4,
+            4,
+            1,
+            12,
+            false,
+            &EncodeOptions {
+                num_decomposition_levels: 1,
+                ..Default::default()
+            },
+        )
+        .expect("HT varied encode");
+
+        let image =
+            Image::new(&codestream, &DecodeSettings::default()).expect("parse HT codestream");
+        let decoded = image.decode_native().expect("decode HT codestream");
+
+        assert_eq!(decoded.width, 4);
+        assert_eq!(decoded.height, 4);
+        assert_eq!(decoded.bit_depth, 12);
+        assert_eq!(decoded.data, pixels);
+    }
+
+    #[test]
+    fn test_encode_high_throughput_gradient_8bit_roundtrip() {
+        let pixels: Vec<u8> = (0..64).collect();
+
+        let codestream = encode_htj2k(
+            &pixels,
+            8,
+            8,
+            1,
+            8,
+            false,
+            &EncodeOptions {
+                num_decomposition_levels: 3,
+                ..Default::default()
+            },
+        )
+        .expect("HT gradient encode");
+
+        let image =
+            Image::new(&codestream, &DecodeSettings::default()).expect("parse HT codestream");
+        let decoded = image.decode_native().expect("decode HT codestream");
+
+        assert_eq!(decoded.width, 8);
+        assert_eq!(decoded.height, 8);
+        assert_eq!(decoded.bit_depth, 8);
         assert_eq!(decoded.data, pixels);
     }
 

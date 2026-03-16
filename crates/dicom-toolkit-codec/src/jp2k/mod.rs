@@ -10,8 +10,8 @@ use dicom_toolkit_core::error::DcmResult;
 
 /// JPEG 2000 codec for DICOM pixel data.
 ///
-/// Supports encoding and decoding of JPEG 2000 compressed DICOM images at
-/// native bit depth (8, 12, or 16-bit), which is critical for diagnostic-quality
+/// Supports encoding and decoding of JPEG 2000 and HTJ2K compressed DICOM images
+/// at native bit depth (8, 12, or 16-bit), which is critical for diagnostic-quality
 /// medical imaging.
 pub struct Jp2kCodec;
 
@@ -21,7 +21,7 @@ impl Jp2kCodec {
         decoder::decode_jp2k(data)
     }
 
-    /// Encode pixel data into a JPEG 2000 codestream.
+    /// Encode pixel data into a classic JPEG 2000 codestream.
     pub fn encode_frame(
         pixels: &[u8],
         width: u32,
@@ -31,6 +31,25 @@ impl Jp2kCodec {
         lossless: bool,
     ) -> DcmResult<Vec<u8>> {
         encoder::encode_jp2k(
+            pixels,
+            width,
+            height,
+            bits_per_sample,
+            samples_per_pixel,
+            lossless,
+        )
+    }
+
+    /// Encode pixel data into an HTJ2K codestream.
+    pub fn encode_frame_htj2k(
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        bits_per_sample: u8,
+        samples_per_pixel: u8,
+        lossless: bool,
+    ) -> DcmResult<Vec<u8>> {
+        encoder::encode_htj2k(
             pixels,
             width,
             height,

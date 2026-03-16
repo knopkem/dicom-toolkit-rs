@@ -4,7 +4,7 @@
 //! in DICOM encapsulated pixel data.
 
 use dicom_toolkit_core::error::{DcmError, DcmResult};
-use dicom_toolkit_jpeg2000::{encode as j2k_encode, EncodeOptions};
+use dicom_toolkit_jpeg2000::{encode as j2k_encode, encode_htj2k as htj2k_encode, EncodeOptions};
 
 /// Encode raw pixel data into a JPEG 2000 codestream.
 ///
@@ -28,9 +28,55 @@ pub fn encode_jp2k(
     samples_per_pixel: u8,
     lossless: bool,
 ) -> DcmResult<Vec<u8>> {
+    encode_with_mode(
+        pixels,
+        width,
+        height,
+        bits_per_sample,
+        samples_per_pixel,
+        lossless,
+        false,
+    )
+}
+
+/// Encode raw pixel data into an HTJ2K codestream.
+pub fn encode_htj2k(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    bits_per_sample: u8,
+    samples_per_pixel: u8,
+    lossless: bool,
+) -> DcmResult<Vec<u8>> {
+    encode_with_mode(
+        pixels,
+        width,
+        height,
+        bits_per_sample,
+        samples_per_pixel,
+        lossless,
+        true,
+    )
+}
+
+fn encode_with_mode(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    bits_per_sample: u8,
+    samples_per_pixel: u8,
+    lossless: bool,
+    use_ht_block_coding: bool,
+) -> DcmResult<Vec<u8>> {
+    let codec_name = if use_ht_block_coding {
+        "HTJ2K"
+    } else {
+        "JPEG 2000"
+    };
+
     if bits_per_sample == 0 || bits_per_sample > 16 {
         return Err(DcmError::CompressionError {
-            reason: format!("JPEG 2000: unsupported bit depth {bits_per_sample}"),
+            reason: format!("{codec_name}: unsupported bit depth {bits_per_sample}"),
         });
     }
 
@@ -45,10 +91,17 @@ pub fn encode_jp2k(
         num_decomposition_levels: num_levels,
         reversible: lossless,
         guard_bits: if lossless { 1 } else { 2 },
+        use_ht_block_coding,
         ..Default::default()
     };
 
-    j2k_encode(
+    let encode_impl = if use_ht_block_coding {
+        htj2k_encode
+    } else {
+        j2k_encode
+    };
+
+    encode_impl(
         pixels,
         width,
         height,
@@ -58,7 +111,7 @@ pub fn encode_jp2k(
         &options,
     )
     .map_err(|e| DcmError::CompressionError {
-        reason: format!("JPEG 2000 encode error: {e}"),
+        reason: format!("{codec_name} encode error: {e}"),
     })
 }
 
@@ -149,5 +202,52 @@ mod tests {
         assert_eq!(decoded.bits_per_sample, 12);
         assert_eq!(decoded.components, 1);
         assert_eq!(decoded.pixels, original);
+    }
+
+    #[test]
+    fn encode_htj2k_roundtrip_12bit() {
+        let mut original = Vec::with_capacity(32);
+        for _ in 0..16 {
+            original.extend_from_slice(&2048u16.to_le_bytes());
+        }
+
+        let encoded = encode_htj2k(&original, 4, 4, 12, 1, true).unwrap();
+        assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
+
+        let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).unwrap();
+        assert_eq!(decoded.width, 4);
+        assert_eq!(decoded.height, 4);
+        assert_eq!(decoded.bits_per_sample, 12);
+        assert_eq!(decoded.components, 1);
+        assert_eq!(decoded.pixels, original);
+    }
+
+    #[test]
+    fn encode_htj2k_lossless_roundtrip_varied_12bit() {
+        let mut original = Vec::with_capacity(32);
+        for i in 0u16..16 {
+            original.extend_from_slice(&((i * 257) & 0x0FFF).to_le_bytes());
+        }
+
+        let encoded = encode_htj2k(&original, 4, 4, 12, 1, true).unwrap();
+        let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).unwrap();
+        assert_eq!(decoded.width, 4);
+        assert_eq!(decoded.height, 4);
+        assert_eq!(decoded.bits_per_sample, 12);
+        assert_eq!(decoded.components, 1);
+        assert_eq!(decoded.pixels, original);
+    }
+
+    #[test]
+    fn encode_htj2k_lossy_is_parseable() {
+        let pixels: Vec<u8> = (0..64).collect();
+        let encoded = encode_htj2k(&pixels, 8, 8, 8, 1, false).unwrap();
+        assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
+
+        let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).unwrap();
+        assert_eq!(decoded.width, 8);
+        assert_eq!(decoded.height, 8);
+        assert_eq!(decoded.bits_per_sample, 8);
+        assert_eq!(decoded.components, 1);
     }
 }

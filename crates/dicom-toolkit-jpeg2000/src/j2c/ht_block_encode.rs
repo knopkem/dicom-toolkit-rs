@@ -217,6 +217,10 @@ pub(crate) fn encode_code_block(
     height: u32,
     total_bitplanes: u8,
 ) -> Result<EncodedCodeBlock, &'static str> {
+    if total_bitplanes == 0 || total_bitplanes > MAX_HT_BITPLANES {
+        return Err("HTJ2K scalar encoder currently supports 1..=30 bitplanes");
+    }
+
     let max_magnitude = coefficients
         .iter()
         .map(|coefficient| coefficient.unsigned_abs())
@@ -231,19 +235,19 @@ pub(crate) fn encode_code_block(
         });
     }
 
-    let k_max = (u32::BITS - max_magnitude.leading_zeros()) as u8;
-    if k_max > MAX_HT_BITPLANES {
-        return Err("HTJ2K scalar encoder currently supports up to 30 bitplanes");
+    let block_bitplanes = (u32::BITS - max_magnitude.leading_zeros()) as u8;
+    if block_bitplanes > total_bitplanes {
+        return Err("HTJ2K block magnitude exceeds configured bitplane count");
     }
 
-    let num_zero_bitplanes = total_bitplanes.saturating_sub(k_max);
-    let aligned = convert_to_aligned_sign_magnitude(coefficients, k_max);
-    let data = encode_cleanup_segment(&aligned, k_max - 1, width as usize, height as usize)?;
+    let missing_msbs = total_bitplanes.saturating_sub(1);
+    let aligned = convert_to_aligned_sign_magnitude(coefficients, total_bitplanes);
+    let data = encode_cleanup_segment(&aligned, missing_msbs, width as usize, height as usize)?;
 
     Ok(EncodedCodeBlock {
         data,
         num_coding_passes: 1,
-        num_zero_bitplanes,
+        num_zero_bitplanes: missing_msbs,
     })
 }
 
@@ -310,7 +314,8 @@ fn encode_cleanup_segment(
         x += 4;
     }
 
-    e_val[1] = 0;
+    let e_val_sentinel = width.div_ceil(2) + 1;
+    e_val[e_val_sentinel] = 0;
 
     let mut y = 2usize;
     while y < height {
@@ -390,7 +395,7 @@ fn process_sample(
     val >>= p;
     val &= !1u32;
     if val != 0 {
-        *rho_acc |= 1 << slot;
+        *rho_acc |= 1 << (slot & 0x3);
         val -= 1;
         e_q[slot] = (u32::BITS - val.leading_zeros()) as i32;
         *e_qmax = (*e_qmax).max(e_q[slot]);
@@ -661,7 +666,7 @@ fn encode_non_initial_quad_pair(
         *c_q0 = 0;
     }
 
-    encode_uvlc(u_q0, u_q1, &mut *vlc)?;
+    encode_uvlc_non_initial(u_q0, u_q1, &mut *vlc)?;
 
     *rho = [0; 2];
     *e_q = [0; 8];
@@ -804,6 +809,12 @@ fn encode_uvlc(u_q0: i32, u_q1: i32, vlc: &mut VlcEncoder) -> Result<(), &'stati
         let second = HT_UVLC_ENCODE_TABLE[u_q1.max(0) as usize];
         encode_uvlc_pair(vlc, first, second)
     }
+}
+
+fn encode_uvlc_non_initial(u_q0: i32, u_q1: i32, vlc: &mut VlcEncoder) -> Result<(), &'static str> {
+    let first = HT_UVLC_ENCODE_TABLE[u_q0.max(0) as usize];
+    let second = HT_UVLC_ENCODE_TABLE[u_q1.max(0) as usize];
+    encode_uvlc_pair(vlc, first, second)
 }
 
 fn encode_uvlc_pair(
