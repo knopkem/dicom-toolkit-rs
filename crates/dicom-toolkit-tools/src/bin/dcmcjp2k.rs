@@ -10,8 +10,9 @@ use clap::Parser;
 use dicom_toolkit_codec::jp2k::encoder::{encode_htj2k, encode_jp2k};
 use dicom_toolkit_codec::registry::GLOBAL_REGISTRY;
 use dicom_toolkit_core::uid::transfer_syntax;
+use dicom_toolkit_data::value::Value::{Ints, Strings, U16, U32};
 use dicom_toolkit_data::value::{PixelData, Value};
-use dicom_toolkit_data::FileFormat;
+use dicom_toolkit_data::{DataSet, FileFormat};
 use dicom_toolkit_dict::tags;
 
 const TS_JPEG2000_LOSSLESS: &str = transfer_syntax::JPEG_2000_LOSSLESS;
@@ -24,8 +25,10 @@ const TS_HTJ2K: &str = transfer_syntax::HIGH_THROUGHPUT_JPEG_2000;
     name = "dcmcjp2k",
     about = "Encode DICOM file with JPEG 2000 transfer syntax",
     long_about = "Reads a DICOM file and re-encodes the pixel data using JPEG 2000\n\
-                  or High-Throughput JPEG 2000 compression. Writes a DICOM Part 10\n\
-                  file with the matching JPEG 2000 or HTJ2K transfer syntax."
+                   or High-Throughput JPEG 2000 compression. Writes a DICOM Part 10\n\
+                   file with the matching JPEG 2000 or HTJ2K transfer syntax.\n\
+                   HTJ2K lossless emits transfer syntax .201 and --encode-lossy\n\
+                   emits .203; RPCL HTJ2K .202 remains decode-only."
 )]
 struct Args {
     /// Input DICOM file
@@ -44,7 +47,7 @@ struct Args {
     #[arg(long = "encode-lossy", conflicts_with = "lossless")]
     lossy: bool,
 
-    /// Use High-Throughput JPEG 2000 block coding (HTJ2K / Part 15)
+    /// Use HTJ2K / Part 15 block coding (.201 lossless, .203 with --encode-lossy)
     #[arg(long = "htj2k")]
     htj2k: bool,
 
@@ -80,11 +83,7 @@ fn main() {
         .get_u16(tags::BITS_STORED)
         .unwrap_or(bits_allocated as u16) as u8;
     let samples_per_pixel = ds.get_u16(tags::SAMPLES_PER_PIXEL).unwrap_or(1) as u8;
-    let number_of_frames = ds
-        .get_string(tags::NUMBER_OF_FRAMES)
-        .and_then(|s| s.trim().parse::<usize>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(1);
+    let number_of_frames = get_number_of_frames(ds);
 
     if rows == 0 || cols == 0 {
         eprintln!("Error: image has zero dimensions ({cols}x{rows})");
@@ -255,4 +254,17 @@ fn main() {
             process::exit(1);
         }
     }
+}
+
+fn get_number_of_frames(dataset: &DataSet) -> usize {
+    dataset
+        .get(tags::NUMBER_OF_FRAMES)
+        .and_then(|elem| match &elem.value {
+            Ints(values) => values.first().copied().map(|n| n.max(1) as usize),
+            Strings(values) => values.first().and_then(|s| s.trim().parse::<usize>().ok()),
+            U16(values) => values.first().copied().map(usize::from),
+            U32(values) => values.first().and_then(|&n| usize::try_from(n).ok()),
+            _ => None,
+        })
+        .unwrap_or(1)
 }

@@ -568,6 +568,61 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    fn assert_htj2k_lossless_roundtrip(
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        bit_depth: u8,
+        num_decomposition_levels: u8,
+    ) {
+        let codestream = encode_htj2k(
+            pixels,
+            width,
+            height,
+            1,
+            bit_depth,
+            false,
+            &EncodeOptions {
+                num_decomposition_levels,
+                ..Default::default()
+            },
+        )
+        .expect("HTJ2K encode");
+
+        assert!(codestream.windows(2).any(|window| window == [0xFF, 0x50]));
+        let cod_offset = codestream
+            .windows(2)
+            .position(|window| window == [0xFF, 0x52])
+            .expect("COD marker");
+        assert_eq!(codestream[cod_offset + 12], 0x40);
+
+        let image = Image::new(
+            &codestream,
+            &DecodeSettings {
+                resolve_palette_indices: true,
+                strict: true,
+                target_resolution: None,
+            },
+        )
+        .expect("parse HT codestream");
+        let decoded = image.decode_native().expect("decode HT codestream");
+
+        assert_eq!(decoded.width, width);
+        assert_eq!(decoded.height, height);
+        assert_eq!(decoded.bit_depth, bit_depth);
+        assert_eq!(decoded.data, pixels);
+    }
+
+    fn gradient_u8(width: u32, height: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((width * height) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                pixels.push(((x * 17 + y * 31) % 256) as u8);
+            }
+        }
+        pixels
+    }
+
     #[test]
     fn test_encode_high_throughput_zero_image_roundtrip() {
         let width = 4u32;
@@ -698,6 +753,75 @@ mod tests {
         assert_eq!(decoded.height, 8);
         assert_eq!(decoded.bit_depth, 8);
         assert_eq!(decoded.data, pixels);
+    }
+
+    #[test]
+    fn test_encode_high_throughput_varied_12bit_large_roundtrip() {
+        let width = 16u32;
+        let height = 8u32;
+        let mut pixels = Vec::with_capacity((width * height * 2) as usize);
+        for y in 0u16..height as u16 {
+            for x in 0u16..width as u16 {
+                let value = (x * 257 + y * 17) & 0x0FFF;
+                pixels.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+
+        assert_htj2k_lossless_roundtrip(&pixels, width, height, 12, 4);
+    }
+
+    #[test]
+    fn test_encode_high_throughput_ramp_16bit_roundtrip() {
+        let width = 48u32;
+        let height = 24u32;
+        let mut pixels = Vec::with_capacity((width * height * 2) as usize);
+        for y in 0u16..height as u16 {
+            for x in 0u16..width as u16 {
+                let value = x * 521 + y * 997;
+                pixels.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+
+        assert_htj2k_lossless_roundtrip(&pixels, width, height, 16, 4);
+    }
+
+    #[test]
+    fn test_encode_high_throughput_lossy_large_gradient_is_parseable() {
+        let pixels = gradient_u8(128, 128);
+
+        let codestream = encode_htj2k(
+            &pixels,
+            128,
+            128,
+            1,
+            8,
+            false,
+            &EncodeOptions {
+                num_decomposition_levels: 5,
+                reversible: false,
+                guard_bits: 2,
+                ..Default::default()
+            },
+        )
+        .expect("lossy HT encode");
+
+        assert!(codestream.windows(2).any(|window| window == [0xFF, 0x50]));
+        assert!(codestream.len() < pixels.len());
+
+        let image = Image::new(
+            &codestream,
+            &DecodeSettings {
+                resolve_palette_indices: true,
+                strict: true,
+                target_resolution: None,
+            },
+        )
+        .expect("parse lossy HT codestream");
+        let decoded = image.decode_native().expect("decode lossy HT codestream");
+
+        assert_eq!(decoded.width, 128);
+        assert_eq!(decoded.height, 128);
+        assert_eq!(decoded.bit_depth, 8);
     }
 
     #[test]

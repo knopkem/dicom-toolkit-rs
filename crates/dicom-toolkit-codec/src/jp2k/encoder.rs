@@ -119,6 +119,42 @@ fn encode_with_mode(
 mod tests {
     use super::*;
 
+    fn assert_lossless_htj2k_roundtrip(
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        bits_per_sample: u8,
+        samples_per_pixel: u8,
+    ) {
+        let encoded = encode_htj2k(
+            pixels,
+            width,
+            height,
+            bits_per_sample,
+            samples_per_pixel,
+            true,
+        )
+        .expect("HTJ2K encode");
+        assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
+
+        let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).expect("HTJ2K decode");
+        assert_eq!(decoded.width, width);
+        assert_eq!(decoded.height, height);
+        assert_eq!(decoded.bits_per_sample, bits_per_sample);
+        assert_eq!(decoded.components, samples_per_pixel);
+        assert_eq!(decoded.pixels, pixels);
+    }
+
+    fn gradient_u8(width: u32, height: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((width * height) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                pixels.push(((x * 17 + y * 31) % 256) as u8);
+            }
+        }
+        pixels
+    }
+
     #[test]
     fn encode_grayscale_8bit() {
         let pixels: Vec<u8> = (0..64).collect();
@@ -247,6 +283,39 @@ mod tests {
         let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).unwrap();
         assert_eq!(decoded.width, 8);
         assert_eq!(decoded.height, 8);
+        assert_eq!(decoded.bits_per_sample, 8);
+        assert_eq!(decoded.components, 1);
+    }
+
+    #[test]
+    fn encode_htj2k_lossless_roundtrip_gradient_8bit() {
+        let gradient: Vec<u8> = (0..64).collect();
+        assert_lossless_htj2k_roundtrip(&gradient, 8, 8, 8, 1);
+    }
+
+    #[test]
+    fn encode_htj2k_lossless_roundtrip_large_16bit() {
+        let mut ramp = Vec::with_capacity(48 * 24 * 2);
+        for y in 0u16..24 {
+            for x in 0u16..48 {
+                let value = x * 521 + y * 997;
+                ramp.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+
+        assert_lossless_htj2k_roundtrip(&ramp, 48, 24, 16, 1);
+    }
+
+    #[test]
+    fn encode_htj2k_lossy_large_gradient_has_stable_decode() {
+        let pixels = gradient_u8(128, 128);
+        let encoded = encode_htj2k(&pixels, 128, 128, 8, 1, false).expect("lossy HTJ2K encode");
+        assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
+        assert!(encoded.len() < pixels.len());
+
+        let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).expect("lossy HTJ2K decode");
+        assert_eq!(decoded.width, 128);
+        assert_eq!(decoded.height, 128);
         assert_eq!(decoded.bits_per_sample, 8);
         assert_eq!(decoded.components, 1);
     }

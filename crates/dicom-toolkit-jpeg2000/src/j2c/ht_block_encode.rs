@@ -833,7 +833,7 @@ fn terminate_mel_vlc(mel: &mut MelEncoder, vlc: &mut VlcEncoder) -> Result<(), &
         mel.emit_bit(true)?;
     }
 
-    mel.tmp <<= mel.remaining_bits;
+    mel.tmp = (u16::from(mel.tmp) << mel.remaining_bits) as u8;
     let mel_mask = ((0xFFu16 << mel.remaining_bits) & 0xFF) as u8;
     let vlc_mask = if vlc.used_bits == 0 {
         0

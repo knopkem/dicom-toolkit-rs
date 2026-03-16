@@ -392,7 +392,7 @@ img2dcm -p "Doe^John" -P "12345" -s "Chest X-Ray" chest.png chest.dcm
 dcmcjpls [OPTIONS] <INPUT> <OUTPUT>
 
 Arguments:
-  <INPUT>   Input DICOM file (uncompressed)
+  <INPUT>   Input DICOM file (uncompressed or decompressible)
   <OUTPUT>  Output DICOM file (JPEG-LS compressed)
 
 Options:
@@ -410,6 +410,9 @@ dcmcjpls image.dcm image_jls.dcm
 
 # Near-lossless with max deviation of 3
 dcmcjpls -n 3 -v image.dcm image_lossy.dcm
+
+# Recode HTJ2K DICOM into JPEG-LS
+dcmcjpls image_htj2k.dcm image_htj2k_jls.dcm
 
 # Batch compress all files in a directory
 for f in study/*.dcm; do dcmcjpls "$f" "compressed/$(basename $f)"; done
@@ -476,6 +479,10 @@ dcmcjp2k --htj2k --encode-lossy -v image.dcm image_htj2k_lossy.dcm
 # Batch compress
 for f in study/*.dcm; do dcmcjp2k "$f" "jp2k/$(basename "$f")"; done
 ```
+
+HTJ2K encode currently emits TS `.201` for lossless and TS `.203` for
+`--encode-lossy`. RPCL HTJ2K TS `.202` remains decode-only until the
+codestream writer supports RPCL progression order.
 
 HTJ2K lossless output is self-validated before `dcmcjp2k` writes it. If the
 current encoder cannot produce a decodable lossless codestream for a given
@@ -626,13 +633,13 @@ The port maps DCMTK's deep C++ class hierarchy to idiomatic Rust:
 - Grayscale and RGB pixel data
 - Library-level encode/decode plus CLI tools `dcmcjp2k` and `dcmdjp2k`
 - Multi-fragment decode (one codestream per frame) in the codec/tools path
-- Decode-side wiring for HTJ2K transfer syntaxes `.201`, `.202`, and `.203`
-- Fixture-backed strict-mode HTJ2K decode coverage using imported OpenHTJ2K conformance codestreams
+- HTJ2K decode for transfer syntaxes `.201`, `.202`, and `.203`, plus encode for `.201` and `.203`
+- Fixture-backed strict-mode HTJ2K decode coverage plus lossless roundtrip/recode regressions through the DICOM tools
 
 **Current scope:**
 - JPEG 2000 Part 1 codestreams aimed at common DICOM usage
 - Single quality layer in the current encoder
-- HTJ2K decode support is currently single-layer only, but now includes real conformance-fixture validation plus an HTJ2K `dcmdjp2k` DICOM regression
+- HTJ2K lossless encode is self-validated and decode support is currently single-layer; the test matrix now includes real fixtures plus HTJ2K `dcmcjpls`/`dcmdjp2k` DICOM regressions
 - Lossless and basic lossy mode; quality tuning is not yet exposed as a user-facing option
 
 ---
@@ -717,7 +724,7 @@ Ships ready to use — receives DICOM instances and saves them as `.dcm` files:
 
 - **Worklist / MPPS**: not yet ported.
 - **JPEG-LS ILV_SAMPLE**: pixel-interleaved multi-component mode not yet supported (ILV_NONE and ILV_LINE work).
-- **JPEG 2000 advanced profiles**: HTJ2K encode support, multi-layer HT decoding, and Part 2 multi-component features are not implemented yet. Current HTJ2K support is decode-oriented and validated against a first real OpenHTJ2K conformance fixture, but broader fixture/DICOM coverage still remains.
+- **JPEG 2000 advanced profiles**: Multi-layer HT decoding and Part 2 multi-component features are not implemented yet. HTJ2K encode is supported for `.201` and `.203`, while `.202` remains decode-only because the current codestream writer emits LRCP rather than RPCL. Broader external-fixture and interoperability coverage still remains.
 - **JPEG 2000 lossy tuning**: current tools expose lossless vs. lossy mode, but not quality/rate controls yet.
 
 ---

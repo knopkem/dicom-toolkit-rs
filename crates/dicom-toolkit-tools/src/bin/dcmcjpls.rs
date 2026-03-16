@@ -9,8 +9,9 @@ use clap::Parser;
 
 use dicom_toolkit_codec::jpeg_ls::encoder::encode_jpeg_ls;
 use dicom_toolkit_codec::registry::GLOBAL_REGISTRY;
+use dicom_toolkit_data::value::Value::{Ints, Strings, U16, U32};
 use dicom_toolkit_data::value::{PixelData, Value};
-use dicom_toolkit_data::FileFormat;
+use dicom_toolkit_data::{DataSet, FileFormat};
 use dicom_toolkit_dict::tags;
 
 const TS_JPEGLS_LOSSLESS: &str = "1.2.840.10008.1.2.4.80";
@@ -20,12 +21,13 @@ const TS_JPEGLS_LOSSY: &str = "1.2.840.10008.1.2.4.81";
 #[command(
     name = "dcmcjpls",
     about = "Encode DICOM file with JPEG-LS transfer syntax",
-    long_about = "Reads a DICOM file and re-encodes the pixel data using JPEG-LS\n\
-                  compression (lossless or near-lossless). Writes a DICOM Part 10 file\n\
-                  with JPEG-LS Lossless or JPEG-LS Lossy transfer syntax."
+    long_about = "Reads a DICOM file, optionally decodes supported compressed input,\n\
+                  and re-encodes the pixel data using JPEG-LS compression (lossless\n\
+                  or near-lossless). Writes a DICOM Part 10 file with JPEG-LS\n\
+                  Lossless or JPEG-LS Lossy transfer syntax."
 )]
 struct Args {
-    /// Input DICOM file
+    /// Input DICOM file (uncompressed or decompressible)
     #[arg(value_name = "INPUT")]
     input: PathBuf,
 
@@ -84,6 +86,7 @@ fn main() {
         .get_u16(tags::BITS_STORED)
         .unwrap_or(bits_allocated as u16) as u8;
     let samples_per_pixel = ds.get_u16(tags::SAMPLES_PER_PIXEL).unwrap_or(1) as u8;
+    let number_of_frames = get_number_of_frames(ds);
 
     if rows == 0 || cols == 0 {
         eprintln!("Error: image has zero dimensions ({cols}x{rows})");
@@ -92,8 +95,14 @@ fn main() {
 
     if args.verbose {
         eprintln!(
-            "Input: {}x{}, {} bit ({} stored), {} component(s), TS: {}",
-            cols, rows, bits_allocated, bits_stored, samples_per_pixel, ff.meta.transfer_syntax_uid
+            "Input: {}x{}, {} bit ({} stored), {} component(s), {} frame(s), TS: {}",
+            cols,
+            rows,
+            bits_allocated,
+            bits_stored,
+            samples_per_pixel,
+            number_of_frames,
+            ff.meta.transfer_syntax_uid
         );
     }
 
@@ -155,27 +164,48 @@ fn main() {
         eprintln!("Uncompressed pixel data: {} bytes", raw_pixels.len());
     }
 
-    // Encode with JPEG-LS.
-    let encoded = match encode_jpeg_ls(
-        &raw_pixels,
-        cols as u32,
-        rows as u32,
-        bits_stored,
-        samples_per_pixel,
-        near,
-    ) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("Error encoding JPEG-LS: {e}");
-            process::exit(1);
-        }
-    };
+    let bytes_per_sample = if bits_allocated <= 8 { 1usize } else { 2usize };
+    let frame_size = rows as usize * cols as usize * samples_per_pixel as usize * bytes_per_sample;
+    if raw_pixels.len() != frame_size * number_of_frames {
+        eprintln!(
+            "Error: pixel data size mismatch: got {} bytes, expected {} ({} frame(s) × {} bytes/frame)",
+            raw_pixels.len(),
+            frame_size * number_of_frames,
+            number_of_frames,
+            frame_size
+        );
+        process::exit(1);
+    }
+
+    // Encode one JPEG-LS fragment per frame.
+    let mut fragments = Vec::with_capacity(number_of_frames);
+    for frame_idx in 0..number_of_frames {
+        let start = frame_idx * frame_size;
+        let end = start + frame_size;
+        let encoded = match encode_jpeg_ls(
+            &raw_pixels[start..end],
+            cols as u32,
+            rows as u32,
+            bits_stored,
+            samples_per_pixel,
+            near,
+        ) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("Error encoding JPEG-LS frame {frame_idx}: {e}");
+                process::exit(1);
+            }
+        };
+        fragments.push(encoded);
+    }
 
     if args.verbose {
-        let ratio = raw_pixels.len() as f64 / encoded.len() as f64;
+        let total_encoded: usize = fragments.iter().map(|fragment| fragment.len()).sum();
+        let ratio = raw_pixels.len() as f64 / total_encoded.max(1) as f64;
         eprintln!(
-            "JPEG-LS encoded: {} bytes (compression ratio {ratio:.1}:1, NEAR={near})",
-            encoded.len()
+            "JPEG-LS encoded: {} frame(s), {} bytes total (compression ratio {ratio:.1}:1, NEAR={near})",
+            fragments.len(),
+            total_encoded
         );
     }
 
@@ -189,10 +219,14 @@ fn main() {
     let mut out_ff = ff.clone();
     out_ff.meta.transfer_syntax_uid = ts_uid.to_string();
 
-    // Replace pixel data with encapsulated JPEG-LS fragment.
+    // Replace pixel data with encapsulated JPEG-LS fragment(s).
     let pixel_data = PixelData::Encapsulated {
-        offset_table: vec![0],
-        fragments: vec![encoded],
+        offset_table: if number_of_frames == 1 {
+            vec![0]
+        } else {
+            vec![]
+        },
+        fragments,
     };
     out_ff.dataset.insert(dicom_toolkit_data::Element {
         tag: tags::PIXEL_DATA,
@@ -229,4 +263,17 @@ fn main() {
             process::exit(1);
         }
     }
+}
+
+fn get_number_of_frames(dataset: &DataSet) -> usize {
+    dataset
+        .get(tags::NUMBER_OF_FRAMES)
+        .and_then(|elem| match &elem.value {
+            Ints(values) => values.first().copied().map(|n| n.max(1) as usize),
+            Strings(values) => values.first().and_then(|s| s.trim().parse::<usize>().ok()),
+            U16(values) => values.first().copied().map(usize::from),
+            U32(values) => values.first().and_then(|&n| usize::try_from(n).ok()),
+            _ => None,
+        })
+        .unwrap_or(1)
 }
