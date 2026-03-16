@@ -8,7 +8,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
 use dicom_toolkit_core::uid::sop_class;
-use dicom_toolkit_data::io::writer::DicomWriter;
+use dicom_toolkit_data::io::{reader::DicomReader, writer::DicomWriter};
 use dicom_toolkit_data::DataSet;
 use dicom_toolkit_dict::{tags, Vr};
 
@@ -28,13 +28,18 @@ use dicom_toolkit_net::{
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const TS_EXPLICIT_LE: &str = "1.2.840.10008.1.2.1";
+const TS_IMPLICIT_LE: &str = "1.2.840.10008.1.2";
 
-fn encode_dataset(ds: &DataSet) -> Vec<u8> {
+fn encode_dataset_with_ts(ds: &DataSet, transfer_syntax: &str) -> Vec<u8> {
     let mut buf = Vec::new();
     DicomWriter::new(&mut buf)
-        .write_dataset(ds, TS_EXPLICIT_LE)
+        .write_dataset(ds, transfer_syntax)
         .expect("encode dataset");
     buf
+}
+
+fn encode_dataset(ds: &DataSet) -> Vec<u8> {
+    encode_dataset_with_ts(ds, TS_EXPLICIT_LE)
 }
 
 fn make_ct_dataset(sop_instance_uid: &str, patient_name: &str) -> DataSet {
@@ -66,6 +71,14 @@ fn qr_find_context(id: u8) -> PresentationContextRq {
         id,
         abstract_syntax: sop_class::PATIENT_ROOT_QR_FIND.to_string(),
         transfer_syntaxes: vec![TS_EXPLICIT_LE.to_string()],
+    }
+}
+
+fn qr_find_context_with_ts(id: u8, transfer_syntax: &str) -> PresentationContextRq {
+    PresentationContextRq {
+        id,
+        abstract_syntax: sop_class::PATIENT_ROOT_QR_FIND.to_string(),
+        transfer_syntaxes: vec![transfer_syntax.to_string()],
     }
 }
 
@@ -309,6 +322,81 @@ async fn test_server_find_loopback() {
     token.cancel();
 
     assert_eq!(results.len(), 1, "expected 1 match");
+    let decoded = DicomReader::new(results[0].as_slice())
+        .read_dataset(TS_EXPLICIT_LE)
+        .expect("decode explicit result");
+    assert_eq!(decoded.get_string(tags::PATIENT_NAME), Some("Find^Result"));
+    assert_eq!(decoded.get_string(tags::PATIENT_ID), Some("PID-001"));
+}
+
+/// C-FIND to a DicomServer negotiated as Implicit VR LE only.
+#[tokio::test]
+async fn test_server_find_loopback_implicit_vr_le() {
+    let mut result_ds = DataSet::new();
+    result_ds.set_string(tags::PATIENT_NAME, Vr::PN, "Find^Implicit");
+    result_ds.set_string(tags::PATIENT_ID, Vr::LO, "PID-IMPLICIT");
+
+    let server = DicomServer::builder()
+        .ae_title("FINDSCP")
+        .port(0)
+        .find_provider(FixedFindProvider {
+            results: vec![result_ds.clone()],
+        })
+        .build()
+        .await
+        .expect("build server");
+
+    let addr = loopback_addr(server.local_addr().expect("local addr"));
+    let token = server.cancellation_token();
+
+    tokio::spawn(async move { server.run().await });
+
+    let cfg = scu_config();
+    let mut assoc = Association::request(
+        &addr.to_string(),
+        "FINDSCP",
+        "SCU",
+        &[qr_find_context_with_ts(1, TS_IMPLICIT_LE)],
+        &cfg,
+    )
+    .await
+    .expect("associate");
+
+    let ctx_id = assoc
+        .find_context(sop_class::PATIENT_ROOT_QR_FIND)
+        .unwrap()
+        .id;
+
+    let query_ds = {
+        let mut q = DataSet::new();
+        q.set_string(tags::PATIENT_ID, Vr::LO, "");
+        q
+    };
+
+    let results = c_find(
+        &mut assoc,
+        FindRequest {
+            sop_class_uid: sop_class::PATIENT_ROOT_QR_FIND.to_string(),
+            query: encode_dataset_with_ts(&query_ds, TS_IMPLICIT_LE),
+            context_id: ctx_id,
+            priority: 0,
+        },
+    )
+    .await
+    .expect("c-find");
+
+    assoc.release().await.unwrap();
+    token.cancel();
+
+    assert_eq!(results.len(), 1, "expected 1 match");
+    let decoded = DicomReader::new(results[0].as_slice())
+        .read_dataset(TS_IMPLICIT_LE)
+        .expect("decode implicit result");
+    assert_eq!(
+        decoded.get_string(tags::PATIENT_NAME),
+        Some("Find^Implicit")
+    );
+    assert_eq!(decoded.get_string(tags::PATIENT_ID), Some("PID-IMPLICIT"));
 }
 
 /// C-GET from a DicomServer — instances delivered via sub-ops on same association.

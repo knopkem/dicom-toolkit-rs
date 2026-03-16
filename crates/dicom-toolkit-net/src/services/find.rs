@@ -82,12 +82,10 @@ fn next_message_id() -> u16 {
 
 const TS_EXPLICIT_LE: &str = "1.2.840.10008.1.2.1";
 
-fn encode_dataset(ds: &DataSet) -> Vec<u8> {
+fn encode_dataset(ds: &DataSet, transfer_syntax: &str) -> DcmResult<Vec<u8>> {
     let mut buf = Vec::new();
-    DicomWriter::new(&mut buf)
-        .write_dataset(ds, TS_EXPLICIT_LE)
-        .unwrap_or_default();
-    buf
+    DicomWriter::new(&mut buf).write_dataset(ds, transfer_syntax)?;
+    Ok(buf)
 }
 
 // ── SCP handler ───────────────────────────────────────────────────────────────
@@ -120,13 +118,13 @@ where
     let query_bytes = assoc.recv_dimse_data().await?;
 
     // Decode using the negotiated transfer syntax.
-    let ts = assoc
+    let negotiated_ts = assoc
         .context_by_id(ctx_id)
         .map(|pc| pc.transfer_syntax.trim_end_matches('\0').to_string())
         .unwrap_or_else(|| TS_EXPLICIT_LE.to_string());
 
     let identifier = DicomReader::new(query_bytes.as_slice())
-        .read_dataset(&ts)
+        .read_dataset(&negotiated_ts)
         .unwrap_or_else(|_| DataSet::new());
 
     let event = FindEvent {
@@ -139,7 +137,7 @@ where
 
     // Send one pending RSP per match.
     for result_ds in &matches {
-        let result_bytes = encode_dataset(result_ds);
+        let result_bytes = encode_dataset(result_ds, &negotiated_ts)?;
 
         let mut rsp = DataSet::new();
         rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
@@ -167,9 +165,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::{encode_dataset, TS_EXPLICIT_LE};
     use crate::dimse;
-    use dicom_toolkit_data::DataSet;
-    use dicom_toolkit_dict::tags;
+    use dicom_toolkit_data::{io::reader::DicomReader, DataSet};
+    use dicom_toolkit_dict::{tags, Vr};
 
     #[test]
     fn c_find_rq_command_build() {
@@ -217,5 +216,22 @@ mod tests {
 
         assert_eq!(decoded.get_u16(tags::STATUS), Some(0x0000));
         assert_eq!(decoded.get_u16(tags::COMMAND_DATA_SET_TYPE), Some(0x0101));
+    }
+
+    #[test]
+    fn encode_dataset_uses_requested_transfer_syntax() {
+        let mut ds = DataSet::new();
+        ds.set_string(tags::PATIENT_NAME, Vr::PN, "DOE^JOHN");
+
+        let explicit = encode_dataset(&ds, TS_EXPLICIT_LE).unwrap();
+        assert_eq!(&explicit[4..6], b"PN");
+
+        let implicit = encode_dataset(&ds, "1.2.840.10008.1.2").unwrap();
+        assert_ne!(&implicit[4..6], b"PN");
+
+        let decoded = DicomReader::new(implicit.as_slice())
+            .read_dataset("1.2.840.10008.1.2")
+            .unwrap();
+        assert_eq!(decoded.get_string(tags::PATIENT_NAME), Some("DOE^JOHN"));
     }
 }
