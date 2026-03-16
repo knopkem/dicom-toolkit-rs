@@ -23,6 +23,18 @@ pub struct AssociationConfig {
     /// without checking against a preferred list.
     pub accept_all_transfer_syntaxes: bool,
 
+    /// Transfer syntax UIDs this SCP is willing to accept explicitly.
+    ///
+    /// When empty and `accept_all_transfer_syntaxes` is `false`, negotiation
+    /// falls back to Explicit VR Little Endian and then Implicit VR Little Endian.
+    pub accepted_transfer_syntaxes: Vec<String>,
+
+    /// Transfer syntax UIDs this SCP prefers, in descending priority order.
+    ///
+    /// When empty, accepted transfer syntaxes are chosen in the order they were
+    /// offered by the peer.
+    pub preferred_transfer_syntaxes: Vec<String>,
+
     /// Implementation Class UID advertised in the User Information sub-item.
     pub implementation_class_uid: String,
 
@@ -42,6 +54,8 @@ impl Default for AssociationConfig {
             max_pdu_length: 65_536,
             dimse_timeout_secs: 30,
             accept_all_transfer_syntaxes: false,
+            accepted_transfer_syntaxes: Vec::new(),
+            preferred_transfer_syntaxes: Vec::new(),
             implementation_class_uid: "1.3.6.1.4.1.30071.8.1".to_string(),
             implementation_version_name: "DCMTK_RS_010".to_string(),
             accepted_abstract_syntaxes: Vec::new(),
@@ -61,6 +75,8 @@ mod tests {
         assert_eq!(cfg.max_pdu_length, 65_536);
         assert_eq!(cfg.dimse_timeout_secs, 30);
         assert!(!cfg.accept_all_transfer_syntaxes);
+        assert!(cfg.accepted_transfer_syntaxes.is_empty());
+        assert!(cfg.preferred_transfer_syntaxes.is_empty());
         assert!(!cfg.implementation_class_uid.is_empty());
     }
 }

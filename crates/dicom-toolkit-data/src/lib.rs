@@ -15,9 +15,11 @@ pub mod value;
 pub mod vr;
 pub mod xml;
 
-pub use dataset::DataSet;
+pub use dataset::{parse_attribute_path, resolve_attribute_path, AttributePathSegment, DataSet};
 pub use element::Element;
 pub use file_format::FileFormat;
-pub use io::{DicomReader, DicomWriter};
+pub use io::{element_value_bytes, DicomReader, DicomWriter};
 pub use meta_info::FileMetaInformation;
-pub use value::{DicomDate, DicomDateTime, DicomTime, PersonName, PixelData, Value};
+pub use value::{
+    encapsulated_frames, DicomDate, DicomDateTime, DicomTime, PersonName, PixelData, Value,
+};

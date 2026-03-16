@@ -449,12 +449,62 @@ fn negotiate_pc(pc: &PresentationContextRqItem, config: &AssociationConfig) -> (
 /// Choose the best transfer syntax from an offered list based on config policy.
 fn choose_ts(offered: &[String], config: &AssociationConfig) -> Option<String> {
     if config.accept_all_transfer_syntaxes {
-        return offered.first().cloned();
+        return choose_preferred_ts(offered, &config.preferred_transfer_syntaxes)
+            .or_else(|| offered.first().cloned());
     }
-    // Prefer Explicit VR LE, then Implicit VR LE
+
+    let allowed: Vec<&String> = if config.accepted_transfer_syntaxes.is_empty() {
+        offered.iter().collect()
+    } else {
+        offered
+            .iter()
+            .filter(|ts| {
+                config
+                    .accepted_transfer_syntaxes
+                    .iter()
+                    .any(|allowed| allowed == *ts)
+            })
+            .collect()
+    };
+
+    if allowed.is_empty() {
+        return None;
+    }
+
+    choose_preferred_ts_refs(&allowed, &config.preferred_transfer_syntaxes).or_else(|| {
+        if config.accepted_transfer_syntaxes.is_empty() {
+            choose_default_uncompressed_ts(&allowed)
+        } else {
+            allowed.first().map(|ts| (*ts).clone())
+        }
+    })
+}
+
+fn choose_preferred_ts(offered: &[String], preferred: &[String]) -> Option<String> {
+    preferred.iter().find_map(|candidate| {
+        offered
+            .iter()
+            .find(|offered_ts| *offered_ts == candidate)
+            .cloned()
+    })
+}
+
+fn choose_preferred_ts_refs(offered: &[&String], preferred: &[String]) -> Option<String> {
+    preferred.iter().find_map(|candidate| {
+        offered
+            .iter()
+            .find(|offered_ts| ***offered_ts == *candidate)
+            .map(|ts| (*ts).clone())
+    })
+}
+
+fn choose_default_uncompressed_ts(offered: &[&String]) -> Option<String> {
     for preferred in &[TS_EXPLICIT_VR_LE, TS_IMPLICIT_VR_LE] {
-        if offered.iter().any(|ts| ts == preferred) {
-            return Some(preferred.to_string());
+        if let Some(ts) = offered
+            .iter()
+            .find(|offered_ts| ***offered_ts == *preferred)
+        {
+            return Some((*ts).clone());
         }
     }
     None
@@ -506,6 +556,51 @@ mod tests {
         };
         let (result, _) = negotiate_pc(&pc, &config);
         assert_eq!(result, 4); // transfer syntaxes not supported
+    }
+
+    #[test]
+    fn negotiate_pc_respects_accepted_transfer_syntaxes() {
+        let config = AssociationConfig {
+            accepted_transfer_syntaxes: vec!["1.2.840.10008.1.2.4.50".to_string()],
+            ..Default::default()
+        };
+        let pc = PresentationContextRqItem {
+            id: 1,
+            abstract_syntax: "1.2.840.10008.1.1".to_string(),
+            transfer_syntaxes: vec![
+                TS_EXPLICIT_VR_LE.to_string(),
+                "1.2.840.10008.1.2.4.50".to_string(),
+            ],
+        };
+        let (result, ts) = negotiate_pc(&pc, &config);
+        assert_eq!(result, 0);
+        assert_eq!(ts, "1.2.840.10008.1.2.4.50");
+    }
+
+    #[test]
+    fn negotiate_pc_prefers_custom_transfer_syntax_order() {
+        let config = AssociationConfig {
+            accepted_transfer_syntaxes: vec![
+                TS_EXPLICIT_VR_LE.to_string(),
+                "1.2.840.10008.1.2.4.50".to_string(),
+            ],
+            preferred_transfer_syntaxes: vec![
+                "1.2.840.10008.1.2.4.50".to_string(),
+                TS_EXPLICIT_VR_LE.to_string(),
+            ],
+            ..Default::default()
+        };
+        let pc = PresentationContextRqItem {
+            id: 1,
+            abstract_syntax: "1.2.840.10008.1.1".to_string(),
+            transfer_syntaxes: vec![
+                TS_EXPLICIT_VR_LE.to_string(),
+                "1.2.840.10008.1.2.4.50".to_string(),
+            ],
+        };
+        let (result, ts) = negotiate_pc(&pc, &config);
+        assert_eq!(result, 0);
+        assert_eq!(ts, "1.2.840.10008.1.2.4.50");
     }
 
     #[test]

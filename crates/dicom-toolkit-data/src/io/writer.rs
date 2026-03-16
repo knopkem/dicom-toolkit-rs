@@ -99,6 +99,42 @@ pub(crate) fn encode_dataset(ds: &DataSet, explicit: bool, le: bool) -> DcmResul
     encode_dataset_impl(ds, explicit, le, true)
 }
 
+/// Encode an element's value field into canonical transfer-syntax-aware bytes.
+///
+/// This helper is intended for numeric and binary VRs used by bulk-data
+/// handlers. Sequence values and encapsulated Pixel Data are rejected because
+/// they require higher-level structural handling.
+pub fn element_value_bytes(elem: &Element, transfer_syntax_uid: &str) -> DcmResult<Vec<u8>> {
+    if matches!(elem.value, Value::Sequence(_)) {
+        return Err(DcmError::Other(
+            "element_value_bytes does not support sequence values".into(),
+        ));
+    }
+
+    if matches!(elem.value, Value::PixelData(PixelData::Encapsulated { .. })) {
+        return Err(DcmError::Other(
+            "element_value_bytes does not support encapsulated Pixel Data; use encapsulated_frames instead"
+                .into(),
+        ));
+    }
+
+    if !supports_raw_value_export(elem) {
+        return Err(DcmError::Other(format!(
+            "element_value_bytes only supports numeric and binary VRs, got {}",
+            elem.vr.code()
+        )));
+    }
+
+    let props = TransferSyntaxProperties::from_uid(transfer_syntax_uid);
+    let bytes = encode_value_bytes(
+        &elem.value,
+        elem.vr,
+        props.is_little_endian(),
+        &DicomCharsetDecoder::default_ascii(),
+    )?;
+    Ok(pad_to_even(bytes, elem.vr.padding_byte()))
+}
+
 fn encode_dataset_impl(
     ds: &DataSet,
     explicit: bool,
@@ -127,6 +163,23 @@ fn encode_dataset_impl(
         out.extend_from_slice(&bytes);
     }
     Ok(out)
+}
+
+fn supports_raw_value_export(elem: &Element) -> bool {
+    matches!(
+        elem.value,
+        Value::U8(_)
+            | Value::U16(_)
+            | Value::I16(_)
+            | Value::U32(_)
+            | Value::I32(_)
+            | Value::U64(_)
+            | Value::I64(_)
+            | Value::F32(_)
+            | Value::F64(_)
+            | Value::Tags(_)
+            | Value::PixelData(PixelData::Native { .. })
+    )
 }
 
 // ── Element encoding ──────────────────────────────────────────────────────────
@@ -499,8 +552,8 @@ fn format_ds(v: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::value::Value;
-    use dicom_toolkit_dict::Vr;
+    use crate::value::{PixelData, Value};
+    use dicom_toolkit_dict::{tags, Tag, Vr};
 
     fn ascii() -> DicomCharsetDecoder {
         DicomCharsetDecoder::default_ascii()
@@ -546,5 +599,53 @@ mod tests {
     fn pad_to_even_already_even() {
         let bytes = pad_to_even(vec![1, 2], 0x00);
         assert_eq!(bytes, vec![1, 2]);
+    }
+
+    #[test]
+    fn element_value_bytes_honors_transfer_syntax_endianness() {
+        let elem = Element::new(tags::ROWS, Vr::US, Value::U16(vec![0x1234]));
+
+        let le = element_value_bytes(&elem, "1.2.840.10008.1.2.1").unwrap();
+        let be = element_value_bytes(&elem, "1.2.840.10008.1.2.2").unwrap();
+
+        assert_eq!(le, vec![0x34, 0x12]);
+        assert_eq!(be, vec![0x12, 0x34]);
+    }
+
+    #[test]
+    fn element_value_bytes_pads_odd_length_binary_values() {
+        let elem = Element::new(
+            tags::PIXEL_DATA,
+            Vr::OB,
+            Value::PixelData(PixelData::Native {
+                bytes: vec![1, 2, 3],
+            }),
+        );
+
+        let bytes = element_value_bytes(&elem, "1.2.840.10008.1.2.1").unwrap();
+        assert_eq!(bytes, vec![1, 2, 3, 0]);
+    }
+
+    #[test]
+    fn element_value_bytes_supports_float_binary_values() {
+        let elem = Element::new(Tag::new(0x7FE0, 0x0008), Vr::OF, Value::F32(vec![1.5]));
+
+        let bytes = element_value_bytes(&elem, "1.2.840.10008.1.2.1").unwrap();
+        assert_eq!(bytes, 1.5f32.to_le_bytes());
+    }
+
+    #[test]
+    fn element_value_bytes_rejects_encapsulated_pixel_data() {
+        let elem = Element::new(
+            tags::PIXEL_DATA,
+            Vr::OB,
+            Value::PixelData(PixelData::Encapsulated {
+                offset_table: vec![0],
+                fragments: vec![vec![1, 2, 3]],
+            }),
+        );
+
+        let err = element_value_bytes(&elem, "1.2.840.10008.1.2.1").unwrap_err();
+        assert!(err.to_string().contains("encapsulated Pixel Data"));
     }
 }

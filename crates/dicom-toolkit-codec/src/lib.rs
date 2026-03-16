@@ -14,7 +14,8 @@ pub use jp2k::Jp2kCodec;
 pub use jpeg::{DecodedFrame, JpegDecoder};
 pub use jpeg_ls::JpegLsCodec;
 pub use registry::{
-    can_decode, decode_pixel_data, supported_transfer_syntaxes, CodecInfo, CodecRegistry,
+    can_decode, can_encode, decode_pixel_data, supported_decode_transfer_syntaxes,
+    supported_encode_transfer_syntaxes, supported_transfer_syntaxes, CodecInfo, CodecRegistry,
     ImageCodec,
 };
 pub use rle::{rle_decode_frame, rle_encode_frame, RleCodec};

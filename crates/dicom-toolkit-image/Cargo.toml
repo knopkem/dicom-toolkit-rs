@@ -14,6 +14,7 @@ categories.workspace = true
 dicom-toolkit-core.workspace = true
 dicom-toolkit-dict.workspace = true
 dicom-toolkit-data.workspace = true
+jpeg-encoder.workspace = true
 png.workspace = true
 tiff.workspace = true
 tracing.workspace = true

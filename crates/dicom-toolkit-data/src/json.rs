@@ -11,6 +11,18 @@ use dicom_toolkit_dict::{Tag, Vr};
 
 // ── Serialization ─────────────────────────────────────────────────────────────
 
+/// Controls how binary values are represented when serializing DICOM JSON.
+pub enum BinaryValueMode<'a> {
+    /// Keep binary data inline using the existing JSON behavior.
+    InlineBinary,
+    /// Emit `BulkDataURI` for eligible tags when the callback provides a URI.
+    ///
+    /// If encapsulated Pixel Data is encountered and the callback does not
+    /// provide a URI, serialization returns an error instead of emitting only
+    /// the first fragment.
+    BulkDataUri(&'a dyn Fn(Tag) -> Option<String>),
+}
+
 /// Serialize a `DataSet` to a DICOM JSON string (PS3.18 §F.2).
 pub fn to_json(dataset: &DataSet) -> DcmResult<String> {
     let obj = dataset_to_json_object(dataset)?;
@@ -24,8 +36,28 @@ pub fn to_json_pretty(dataset: &DataSet) -> DcmResult<String> {
         .map_err(|e| DcmError::Other(format!("JSON serialize error: {e}")))
 }
 
+/// Serialize a `DataSet` to a DICOM JSON string using an explicit binary-value policy.
+pub fn to_json_with_binary_mode(dataset: &DataSet, mode: BinaryValueMode<'_>) -> DcmResult<String> {
+    let obj = dataset_to_json_object_with_binary_mode(dataset, &mode)?;
+    serde_json::to_string(&obj).map_err(|e| DcmError::Other(format!("JSON serialize error: {e}")))
+}
+
 fn dataset_to_json_object(
     dataset: &DataSet,
+) -> DcmResult<serde_json::Map<String, serde_json::Value>> {
+    dataset_to_json_object_internal(dataset, None)
+}
+
+fn dataset_to_json_object_with_binary_mode(
+    dataset: &DataSet,
+    mode: &BinaryValueMode<'_>,
+) -> DcmResult<serde_json::Map<String, serde_json::Value>> {
+    dataset_to_json_object_internal(dataset, Some(mode))
+}
+
+fn dataset_to_json_object_internal(
+    dataset: &DataSet,
+    binary_mode: Option<&BinaryValueMode<'_>>,
 ) -> DcmResult<serde_json::Map<String, serde_json::Value>> {
     let mut map = serde_json::Map::new();
     for (tag, elem) in dataset.iter() {
@@ -34,14 +66,21 @@ fn dataset_to_json_object(
             continue;
         }
         let key = format!("{:04X}{:04X}", tag.group, tag.element);
-        let json_elem = element_to_json(elem)?;
+        let json_elem = element_to_json_internal(elem, binary_mode)?;
         map.insert(key, json_elem);
     }
     Ok(map)
 }
 
-fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
+fn element_to_json_internal(
+    elem: &Element,
+    binary_mode: Option<&BinaryValueMode<'_>>,
+) -> DcmResult<serde_json::Value> {
     let vr_str = elem.vr.code().to_string();
+
+    if let Some(json) = binary_value_to_json(elem, binary_mode, &vr_str)? {
+        return Ok(json);
+    }
 
     let value_json: Option<serde_json::Value> = match &elem.value {
         Value::Empty => None,
@@ -192,15 +231,13 @@ fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
             let arr: Vec<serde_json::Value> = items
                 .iter()
                 .map(|item| {
-                    dataset_to_json_object(item)
+                    dataset_to_json_object_internal(item, binary_mode)
                         .map(serde_json::Value::Object)
                         .unwrap_or(serde_json::Value::Null)
                 })
                 .collect();
             Some(serde_json::Value::Array(arr))
         }
-
-        // Bulk binary data: encode as base64 InlineBinary
         Value::U8(bytes) => {
             use base64::Engine;
             let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
@@ -209,12 +246,10 @@ fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
             obj.insert("InlineBinary".into(), serde_json::Value::String(b64));
             return Ok(serde_json::Value::Object(obj));
         }
-
         Value::PixelData(pd) => {
             let bytes = match pd {
                 PixelData::Native { bytes } => bytes.as_slice(),
                 PixelData::Encapsulated { fragments, .. } => {
-                    // Return first fragment for inline; full support would use BulkDataURI
                     fragments.first().map(|f| f.as_slice()).unwrap_or(&[])
                 }
             };
@@ -233,6 +268,61 @@ fn element_to_json(elem: &Element) -> DcmResult<serde_json::Value> {
         obj.insert("Value".into(), v);
     }
     Ok(serde_json::Value::Object(obj))
+}
+
+fn binary_value_to_json(
+    elem: &Element,
+    binary_mode: Option<&BinaryValueMode<'_>>,
+    vr_str: &str,
+) -> DcmResult<Option<serde_json::Value>> {
+    let Some(binary_mode) = binary_mode else {
+        return Ok(None);
+    };
+
+    if !is_bulk_data_eligible(elem) {
+        return Ok(None);
+    }
+
+    match binary_mode {
+        BinaryValueMode::BulkDataUri(resolve_uri) => {
+            if let Some(uri) = resolve_uri(elem.tag) {
+                return Ok(Some(json_bulk_data_uri(vr_str, uri)));
+            }
+
+            if matches!(elem.value, Value::PixelData(PixelData::Encapsulated { .. })) {
+                return Err(DcmError::Other(format!(
+                    "encapsulated Pixel Data tag {} requires BulkDataURI in to_json_with_binary_mode",
+                    elem.tag
+                )));
+            }
+
+            Ok(None)
+        }
+        BinaryValueMode::InlineBinary => {
+            if let Value::PixelData(PixelData::Encapsulated { .. }) = &elem.value {
+                return Err(DcmError::Other(format!(
+                    "encapsulated Pixel Data tag {} requires BulkDataURI in to_json_with_binary_mode",
+                    elem.tag
+                )));
+            }
+            Ok(None)
+        }
+    }
+}
+
+fn is_bulk_data_eligible(elem: &Element) -> bool {
+    matches!(elem.value, Value::PixelData(_))
+        || matches!(
+            elem.vr,
+            Vr::OB | Vr::OD | Vr::OF | Vr::OL | Vr::OV | Vr::OW | Vr::UN
+        )
+}
+
+fn json_bulk_data_uri(vr_str: &str, uri: String) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert("vr".into(), serde_json::Value::String(vr_str.to_string()));
+    obj.insert("BulkDataURI".into(), serde_json::Value::String(uri));
+    serde_json::Value::Object(obj)
 }
 
 // ── Deserialization ───────────────────────────────────────────────────────────
@@ -592,5 +682,68 @@ mod tests {
         // Should be parseable
         let reparsed: serde_json::Value = serde_json::from_str(&pretty).unwrap();
         assert!(reparsed.is_object());
+    }
+
+    #[test]
+    fn bulk_data_uri_mode_uses_uri_for_binary_vrs() {
+        let binary_tag = Tag::new(0x5400, 0x1010);
+        let mut ds = DataSet::new();
+        ds.insert(Element::new(
+            binary_tag,
+            Vr::OB,
+            Value::U8(vec![1, 2, 3, 4]),
+        ));
+
+        let json = to_json_with_binary_mode(
+            &ds,
+            BinaryValueMode::BulkDataUri(&|tag| {
+                (tag == binary_tag).then_some("https://example.test/bulk/54001010".to_string())
+            }),
+        )
+        .unwrap();
+
+        assert!(json.contains("\"BulkDataURI\":\"https://example.test/bulk/54001010\""));
+        assert!(!json.contains("InlineBinary"));
+    }
+
+    #[test]
+    fn bulk_data_uri_mode_uses_uri_for_pixel_data() {
+        let mut ds = DataSet::new();
+        ds.insert(Element::new(
+            tags::PIXEL_DATA,
+            Vr::OB,
+            Value::PixelData(PixelData::Encapsulated {
+                offset_table: vec![0],
+                fragments: vec![vec![1, 2], vec![3, 4]],
+            }),
+        ));
+
+        let json = to_json_with_binary_mode(
+            &ds,
+            BinaryValueMode::BulkDataUri(&|tag| {
+                (tag == tags::PIXEL_DATA).then_some("https://example.test/bulk/pixel".to_string())
+            }),
+        )
+        .unwrap();
+
+        assert!(json.contains("\"BulkDataURI\":\"https://example.test/bulk/pixel\""));
+        assert!(!json.contains("InlineBinary"));
+    }
+
+    #[test]
+    fn bulk_data_uri_mode_rejects_encapsulated_pixel_data_without_uri() {
+        let mut ds = DataSet::new();
+        ds.insert(Element::new(
+            tags::PIXEL_DATA,
+            Vr::OB,
+            Value::PixelData(PixelData::Encapsulated {
+                offset_table: vec![0],
+                fragments: vec![vec![1, 2], vec![3, 4]],
+            }),
+        ));
+
+        let err =
+            to_json_with_binary_mode(&ds, BinaryValueMode::BulkDataUri(&|_| None)).unwrap_err();
+        assert!(err.to_string().contains("requires BulkDataURI"));
     }
 }

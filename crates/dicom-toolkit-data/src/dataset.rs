@@ -17,6 +17,13 @@ pub struct DataSet {
     elements: IndexMap<Tag, Element>,
 }
 
+/// One segment of a nested DICOM attribute path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttributePathSegment {
+    Tag(Tag),
+    Item(usize),
+}
+
 impl DataSet {
     pub fn new() -> Self {
         Self {
@@ -143,6 +150,115 @@ impl DataSet {
     pub fn set_uid(&mut self, tag: Tag, uid: &str) {
         self.insert(Element::uid(tag, uid));
     }
+}
+
+/// Parse an attribute path of the form `TAG[/ITEM/TAG]*`.
+///
+/// Tags are 8 hexadecimal digits (`GGGGEEEE`). Item indices are zero-based
+/// decimal integers. Leading and trailing slashes are ignored.
+pub fn parse_attribute_path(path: &str) -> DcmResult<Vec<AttributePathSegment>> {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return Err(DcmError::Other("attribute path must not be empty".into()));
+    }
+
+    let parts: Vec<&str> = trimmed.split('/').collect();
+    if parts.len() % 2 == 0 {
+        return Err(DcmError::Other(format!(
+            "attribute path must end with a tag, got {path:?}"
+        )));
+    }
+
+    let mut segments = Vec::with_capacity(parts.len());
+    for (index, part) in parts.iter().enumerate() {
+        if index % 2 == 0 {
+            segments.push(AttributePathSegment::Tag(parse_path_tag(part)?));
+        } else {
+            segments.push(AttributePathSegment::Item(parse_path_item(part)?));
+        }
+    }
+
+    Ok(segments)
+}
+
+/// Resolve an attribute path into a concrete element.
+pub fn resolve_attribute_path<'a>(
+    dataset: &'a DataSet,
+    path: &[AttributePathSegment],
+) -> DcmResult<&'a Element> {
+    if path.is_empty() {
+        return Err(DcmError::Other("attribute path must not be empty".into()));
+    }
+
+    let mut current = dataset;
+    let mut index = 0usize;
+    while index < path.len() {
+        let AttributePathSegment::Tag(tag) = path[index] else {
+            return Err(DcmError::Other(
+                "attribute paths must start with a tag segment".into(),
+            ));
+        };
+
+        let element = current.find_element(tag)?;
+        if index == path.len() - 1 {
+            return Ok(element);
+        }
+
+        let AttributePathSegment::Item(item_index) = path[index + 1] else {
+            return Err(DcmError::Other(format!(
+                "tag ({:04X},{:04X}) must be followed by an item index before descending",
+                tag.group, tag.element
+            )));
+        };
+
+        let items = element.items().ok_or_else(|| {
+            DcmError::Other(format!(
+                "tag ({:04X},{:04X}) is not a sequence and cannot be indexed",
+                tag.group, tag.element
+            ))
+        })?;
+
+        current = items.get(item_index).ok_or_else(|| {
+            DcmError::Other(format!(
+                "item index {} is out of range for sequence ({:04X},{:04X}) with {} item(s)",
+                item_index,
+                tag.group,
+                tag.element,
+                items.len()
+            ))
+        })?;
+        index += 2;
+    }
+
+    Err(DcmError::Other(
+        "attribute path did not resolve to an element".into(),
+    ))
+}
+
+fn parse_path_tag(segment: &str) -> DcmResult<Tag> {
+    if segment.len() != 8 || !segment.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(DcmError::Other(format!(
+            "invalid tag path segment {segment:?}; expected 8 hexadecimal digits"
+        )));
+    }
+
+    let group = u16::from_str_radix(&segment[..4], 16)
+        .map_err(|_| DcmError::Other(format!("invalid tag group in {segment:?}")))?;
+    let element = u16::from_str_radix(&segment[4..], 16)
+        .map_err(|_| DcmError::Other(format!("invalid tag element in {segment:?}")))?;
+    Ok(Tag::new(group, element))
+}
+
+fn parse_path_item(segment: &str) -> DcmResult<usize> {
+    let raw = segment
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(segment);
+    raw.parse::<usize>().map_err(|_| {
+        DcmError::Other(format!(
+            "invalid item path segment {segment:?}; expected a zero-based item index"
+        ))
+    })
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -277,5 +393,65 @@ mod tests {
         ds.set_u16(tags::ROWS, 1024);
         assert_eq!(ds.len(), 1);
         assert_eq!(ds.get_u16(tags::ROWS), Some(1024));
+    }
+
+    #[test]
+    fn parse_attribute_path_top_level_tag() {
+        let path = parse_attribute_path("7FE00010").unwrap();
+        assert_eq!(path, vec![AttributePathSegment::Tag(tags::PIXEL_DATA)]);
+    }
+
+    #[test]
+    fn parse_attribute_path_nested_sequence() {
+        let path = parse_attribute_path("00081115/0/00081155").unwrap();
+        assert_eq!(
+            path,
+            vec![
+                AttributePathSegment::Tag(tags::REFERENCED_SOP_SEQUENCE),
+                AttributePathSegment::Item(0),
+                AttributePathSegment::Tag(tags::REFERENCED_SOP_INSTANCE_UID),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_attribute_path_rejects_malformed_paths() {
+        assert!(parse_attribute_path("").is_err());
+        assert!(parse_attribute_path("00081140/0").is_err());
+        assert!(parse_attribute_path("GGGG1140").is_err());
+        assert!(parse_attribute_path("00081140/not-an-item/00081155").is_err());
+    }
+
+    #[test]
+    fn resolve_attribute_path_top_level_tag() {
+        let mut ds = DataSet::new();
+        ds.set_u16(tags::ROWS, 512);
+
+        let path = parse_attribute_path("00280010").unwrap();
+        let element = resolve_attribute_path(&ds, &path).unwrap();
+        assert_eq!(element.u16_value(), Some(512));
+    }
+
+    #[test]
+    fn resolve_attribute_path_nested_sequence_item() {
+        let mut item = DataSet::new();
+        item.set_uid(tags::REFERENCED_SOP_INSTANCE_UID, "1.2.3");
+
+        let mut ds = DataSet::new();
+        ds.set_sequence(tags::REFERENCED_SOP_SEQUENCE, vec![item]);
+
+        let path = parse_attribute_path("00081115/0/00081155").unwrap();
+        let element = resolve_attribute_path(&ds, &path).unwrap();
+        assert_eq!(element.string_value(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn resolve_attribute_path_rejects_out_of_range_item() {
+        let mut ds = DataSet::new();
+        ds.set_sequence(tags::REFERENCED_SOP_SEQUENCE, vec![DataSet::new()]);
+
+        let path = parse_attribute_path("00081115/1/00081155").unwrap();
+        let err = resolve_attribute_path(&ds, &path).unwrap_err();
+        assert!(err.to_string().contains("out of range"));
     }
 }

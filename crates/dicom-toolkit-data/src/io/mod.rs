@@ -6,4 +6,4 @@ pub mod transfer;
 pub mod writer;
 
 pub use reader::DicomReader;
-pub use writer::DicomWriter;
+pub use writer::{element_value_bytes, DicomWriter};

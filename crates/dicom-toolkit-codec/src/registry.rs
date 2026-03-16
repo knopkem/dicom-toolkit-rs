@@ -558,7 +558,7 @@ pub static GLOBAL_REGISTRY: LazyLock<CodecRegistry> = LazyLock::new(|| {
 // ── Flat functional API ───────────────────────────────────────────────────────
 
 /// Transfer syntax UIDs that this crate can decode.
-const SUPPORTED_TS: &[&str] = &[
+const SUPPORTED_DECODE_TS: &[&str] = &[
     transfer_syntaxes::RLE_LOSSLESS.uid,
     transfer_syntaxes::JPEG_BASELINE.uid,
     transfer_syntaxes::JPEG_EXTENDED.uid,
@@ -573,6 +573,19 @@ const SUPPORTED_TS: &[&str] = &[
     transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid,
 ];
 
+/// Transfer syntax UIDs that this crate can encode.
+const SUPPORTED_ENCODE_TS: &[&str] = &[
+    transfer_syntaxes::RLE_LOSSLESS.uid,
+    transfer_syntaxes::JPEG_BASELINE.uid,
+    transfer_syntaxes::JPEG_EXTENDED.uid,
+    transfer_syntaxes::JPEG_LS_LOSSLESS.uid,
+    transfer_syntaxes::JPEG_LS_LOSSY.uid,
+    transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
+    transfer_syntaxes::JPEG_2000.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid,
+];
+
 /// Registered codec information for a transfer syntax.
 #[derive(Debug, Clone, Copy)]
 pub struct CodecInfo {
@@ -584,12 +597,27 @@ pub struct CodecInfo {
 
 /// Returns `true` if a decoder is available for the given transfer syntax UID.
 pub fn can_decode(ts_uid: &str) -> bool {
-    SUPPORTED_TS.contains(&ts_uid)
+    SUPPORTED_DECODE_TS.contains(&ts_uid)
+}
+
+/// Returns all transfer syntax UIDs that this crate can decode.
+pub fn supported_decode_transfer_syntaxes() -> &'static [&'static str] {
+    SUPPORTED_DECODE_TS
+}
+
+/// Returns `true` if an encoder is available for the given transfer syntax UID.
+pub fn can_encode(ts_uid: &str) -> bool {
+    SUPPORTED_ENCODE_TS.contains(&ts_uid)
+}
+
+/// Returns all transfer syntax UIDs that this crate can encode.
+pub fn supported_encode_transfer_syntaxes() -> &'static [&'static str] {
+    SUPPORTED_ENCODE_TS
 }
 
 /// Returns all transfer syntax UIDs that this crate can decode.
 pub fn supported_transfer_syntaxes() -> &'static [&'static str] {
-    SUPPORTED_TS
+    supported_decode_transfer_syntaxes()
 }
 
 /// Decode a single pixel-data fragment for the given transfer syntax.
@@ -723,11 +751,34 @@ mod tests {
 
     #[test]
     fn supported_transfer_syntaxes_is_non_empty() {
-        let list = supported_transfer_syntaxes();
+        let list = supported_decode_transfer_syntaxes();
         assert!(!list.is_empty());
         assert!(list.contains(&transfer_syntaxes::RLE_LOSSLESS.uid));
         assert!(list.contains(&transfer_syntaxes::JPEG_BASELINE.uid));
         assert!(list.contains(&transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid));
+    }
+
+    #[test]
+    fn supported_encode_transfer_syntaxes_excludes_decode_only_codecs() {
+        let list = supported_encode_transfer_syntaxes();
+        assert!(list.contains(&transfer_syntaxes::RLE_LOSSLESS.uid));
+        assert!(list.contains(&transfer_syntaxes::JPEG_2000_LOSSLESS.uid));
+        assert!(list.contains(&transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid));
+        assert!(!list.contains(&transfer_syntaxes::JPEG_LOSSLESS.uid));
+        assert!(!list.contains(&transfer_syntaxes::JPEG_LOSSLESS_SV1.uid));
+        assert!(
+            !list.contains(&transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid)
+        );
+    }
+
+    #[test]
+    fn can_encode_distinguishes_decode_only_transfer_syntaxes() {
+        assert!(can_encode(transfer_syntaxes::JPEG_BASELINE.uid));
+        assert!(can_encode(transfer_syntaxes::JPEG_LS_LOSSLESS.uid));
+        assert!(!can_encode(transfer_syntaxes::JPEG_LOSSLESS.uid));
+        assert!(!can_encode(
+            transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid
+        ));
     }
 
     #[test]

@@ -10,6 +10,7 @@ pub mod export;
 pub mod lut;
 pub mod overlay;
 pub mod pixel;
+pub mod render;
 pub mod transform;
 pub mod window;
 
@@ -17,8 +18,9 @@ pub mod window;
 
 pub use color::{PaletteColorLut, PhotometricInterpretation};
 pub use dicom_image::{DicomImage, PixelRepresentation};
-pub use export::{export_frame_png, frame_to_png_bytes};
+pub use export::{export_frame_jpeg, export_frame_png, frame_to_jpeg_bytes, frame_to_png_bytes};
 pub use lut::ModalityLut;
 pub use overlay::Overlay;
+pub use render::{render_frame_u8, RenderedFrameOptions, RenderedRegion};
 pub use transform::{flip, rotate, scale_bilinear, Flip, Rotation};
 pub use window::WindowLevel;

@@ -353,6 +353,124 @@ pub enum PixelData {
     },
 }
 
+impl PixelData {
+    /// Split encapsulated pixel data into per-frame compressed payloads.
+    pub fn encapsulated_frames(&self, number_of_frames: u32) -> DcmResult<Vec<Vec<u8>>> {
+        encapsulated_frames(self, number_of_frames)
+    }
+}
+
+/// Split encapsulated pixel data into per-frame compressed payloads.
+///
+/// Supports:
+/// - single-frame encapsulated objects
+/// - multi-frame data with one fragment per frame and an empty BOT
+/// - multi-fragment-per-frame data described by the Basic Offset Table
+pub fn encapsulated_frames(
+    pixel_data: &PixelData,
+    number_of_frames: u32,
+) -> DcmResult<Vec<Vec<u8>>> {
+    if number_of_frames == 0 {
+        return Err(DcmError::Other(
+            "number_of_frames must be at least 1 for encapsulated Pixel Data".into(),
+        ));
+    }
+
+    let PixelData::Encapsulated {
+        offset_table,
+        fragments,
+    } = pixel_data
+    else {
+        return Err(DcmError::Other(
+            "encapsulated_frames requires encapsulated Pixel Data".into(),
+        ));
+    };
+
+    if fragments.is_empty() {
+        return Err(DcmError::Other(
+            "encapsulated Pixel Data has no fragments".into(),
+        ));
+    }
+
+    if number_of_frames == 1 {
+        return Ok(vec![fragments.concat()]);
+    }
+
+    if offset_table.is_empty() {
+        if fragments.len() == number_of_frames as usize {
+            return Ok(fragments.clone());
+        }
+        return Err(DcmError::Other(format!(
+            "encapsulated Pixel Data for {number_of_frames} frames requires a Basic Offset Table or one fragment per frame, found {} fragment(s)",
+            fragments.len()
+        )));
+    }
+
+    if offset_table.len() != number_of_frames as usize {
+        return Err(DcmError::Other(format!(
+            "Basic Offset Table has {} entries, expected {number_of_frames}",
+            offset_table.len()
+        )));
+    }
+
+    let fragment_offsets = fragment_start_offsets(fragments)?;
+    let total_length = total_fragment_stream_length(fragments)?;
+    let mut frames = Vec::with_capacity(number_of_frames as usize);
+
+    for frame_index in 0..number_of_frames as usize {
+        let start_offset = offset_table[frame_index];
+        let start_fragment = fragment_offsets
+            .iter()
+            .position(|&offset| offset == start_offset)
+            .ok_or_else(|| {
+                DcmError::Other(format!(
+                    "Basic Offset Table entry {} does not align to a fragment boundary",
+                    frame_index + 1
+                ))
+            })?;
+
+        let end_fragment = if let Some(&next_offset) = offset_table.get(frame_index + 1) {
+            if next_offset < start_offset {
+                return Err(DcmError::Other(format!(
+                    "Basic Offset Table entry {} points before the current frame start",
+                    frame_index + 2
+                )));
+            }
+            fragment_offsets
+                .iter()
+                .position(|&offset| offset == next_offset)
+                .ok_or_else(|| {
+                    DcmError::Other(format!(
+                        "Basic Offset Table entry {} does not align to a fragment boundary",
+                        frame_index + 2
+                    ))
+                })?
+        } else {
+            if start_offset > total_length {
+                return Err(DcmError::Other(
+                    "Basic Offset Table points beyond the fragment stream".into(),
+                ));
+            }
+            fragments.len()
+        };
+
+        if end_fragment <= start_fragment {
+            return Err(DcmError::Other(format!(
+                "frame {} resolves to an empty fragment range",
+                frame_index + 1
+            )));
+        }
+
+        let mut frame = Vec::new();
+        for fragment in &fragments[start_fragment..end_fragment] {
+            frame.extend_from_slice(fragment);
+        }
+        frames.push(frame);
+    }
+
+    Ok(frames)
+}
+
 // ── Value ─────────────────────────────────────────────────────────────────────
 
 /// The value held by a DICOM data element.
@@ -639,6 +757,33 @@ fn parse_u16_str(s: &str) -> DcmResult<u16> {
 fn parse_u32_str(s: &str) -> DcmResult<u32> {
     s.parse::<u32>()
         .map_err(|_| DcmError::Other(format!("expected u32, got {:?}", s)))
+}
+
+fn fragment_start_offsets(fragments: &[Vec<u8>]) -> DcmResult<Vec<u32>> {
+    let mut offsets = Vec::with_capacity(fragments.len());
+    let mut cursor = 0u32;
+    for fragment in fragments {
+        offsets.push(cursor);
+        cursor = cursor
+            .checked_add(fragment_item_length(fragment)?)
+            .ok_or_else(|| DcmError::Other("fragment stream exceeds u32 offset range".into()))?;
+    }
+    Ok(offsets)
+}
+
+fn total_fragment_stream_length(fragments: &[Vec<u8>]) -> DcmResult<u32> {
+    fragments.iter().try_fold(0u32, |total, fragment| {
+        total
+            .checked_add(fragment_item_length(fragment)?)
+            .ok_or_else(|| DcmError::Other("fragment stream exceeds u32 offset range".into()))
+    })
+}
+
+fn fragment_item_length(fragment: &[u8]) -> DcmResult<u32> {
+    let len = u32::try_from(fragment.len())
+        .map_err(|_| DcmError::Other("fragment length exceeds u32 range".into()))?;
+    len.checked_add(8)
+        .ok_or_else(|| DcmError::Other("fragment item length exceeds u32 range".into()))
 }
 
 /// Format an f64 without trailing zeros but with at least one decimal place.
@@ -942,5 +1087,49 @@ mod tests {
     fn value_as_bytes() {
         let v = Value::U8(vec![1, 2, 3]);
         assert_eq!(v.as_bytes(), Some(&[1u8, 2, 3][..]));
+    }
+
+    #[test]
+    fn encapsulated_frames_single_frame_concatenates_fragments() {
+        let pixel_data = PixelData::Encapsulated {
+            offset_table: vec![0],
+            fragments: vec![vec![1, 2], vec![3, 4]],
+        };
+
+        let frames = encapsulated_frames(&pixel_data, 1).unwrap();
+        assert_eq!(frames, vec![vec![1, 2, 3, 4]]);
+    }
+
+    #[test]
+    fn encapsulated_frames_handles_empty_bot_one_fragment_per_frame() {
+        let pixel_data = PixelData::Encapsulated {
+            offset_table: vec![],
+            fragments: vec![vec![1, 2], vec![3, 4]],
+        };
+
+        let frames = encapsulated_frames(&pixel_data, 2).unwrap();
+        assert_eq!(frames, vec![vec![1, 2], vec![3, 4]]);
+    }
+
+    #[test]
+    fn encapsulated_frames_uses_basic_offset_table_for_multi_fragment_frames() {
+        let pixel_data = PixelData::Encapsulated {
+            offset_table: vec![0, 22],
+            fragments: vec![vec![1, 2], vec![3, 4, 5, 6], vec![7, 8, 9]],
+        };
+
+        let frames = encapsulated_frames(&pixel_data, 2).unwrap();
+        assert_eq!(frames, vec![vec![1, 2, 3, 4, 5, 6], vec![7, 8, 9]]);
+    }
+
+    #[test]
+    fn encapsulated_frames_rejects_malformed_offset_table() {
+        let pixel_data = PixelData::Encapsulated {
+            offset_table: vec![0, 99],
+            fragments: vec![vec![1, 2], vec![3, 4]],
+        };
+
+        let err = encapsulated_frames(&pixel_data, 2).unwrap_err();
+        assert!(err.to_string().contains("does not align"));
     }
 }
