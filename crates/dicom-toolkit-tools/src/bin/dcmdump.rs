@@ -165,6 +165,10 @@ fn ts_display_name(uid: &str) -> &str {
         "1.2.840.10008.1.2.4.70" => "JPEG Lossless",
         "1.2.840.10008.1.2.4.80" => "JPEG-LS Lossless",
         "1.2.840.10008.1.2.4.90" => "JPEG 2000 Lossless",
+        "1.2.840.10008.1.2.4.91" => "JPEG 2000",
+        "1.2.840.10008.1.2.4.201" => "High-Throughput JPEG 2000 Lossless Only",
+        "1.2.840.10008.1.2.4.202" => "High-Throughput JPEG 2000 RPCL Lossless Only",
+        "1.2.840.10008.1.2.4.203" => "High-Throughput JPEG 2000",
         other => other,
     }
 }

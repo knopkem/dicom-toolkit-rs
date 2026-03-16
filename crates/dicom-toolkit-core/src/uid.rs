@@ -233,6 +233,9 @@ pub mod transfer_syntax {
     // JPEG 2000
     pub const JPEG_2000_LOSSLESS: &str = "1.2.840.10008.1.2.4.90";
     pub const JPEG_2000: &str = "1.2.840.10008.1.2.4.91";
+    pub const HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY: &str = "1.2.840.10008.1.2.4.201";
+    pub const HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY: &str = "1.2.840.10008.1.2.4.202";
+    pub const HIGH_THROUGHPUT_JPEG_2000: &str = "1.2.840.10008.1.2.4.203";
 
     // RLE
     pub const RLE_LOSSLESS: &str = "1.2.840.10008.1.2.5";

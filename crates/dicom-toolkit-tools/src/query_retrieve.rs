@@ -56,6 +56,9 @@ const STORE_TRANSFER_SYNTAXES: &[&str] = &[
     transfer_syntax::JPEG_LS_LOSSY,
     transfer_syntax::JPEG_2000_LOSSLESS,
     transfer_syntax::JPEG_2000,
+    transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY,
+    transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY,
+    transfer_syntax::HIGH_THROUGHPUT_JPEG_2000,
 ];
 
 pub fn qr_find_contexts() -> Vec<PresentationContextRq> {

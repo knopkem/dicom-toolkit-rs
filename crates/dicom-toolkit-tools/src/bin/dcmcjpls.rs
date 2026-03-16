@@ -104,7 +104,7 @@ fn main() {
             Value::PixelData(PixelData::Encapsulated { .. }) => {
                 // Already compressed — try to decompress first.
                 let ts_uid = &ff.meta.transfer_syntax_uid;
-                match GLOBAL_REGISTRY.find(ts_uid) {
+                match GLOBAL_REGISTRY.find_decoder(ts_uid) {
                     Some(codec) => {
                         match codec.decode(
                             match &elem.value {

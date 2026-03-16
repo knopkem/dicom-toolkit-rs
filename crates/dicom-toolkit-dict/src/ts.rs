@@ -194,6 +194,33 @@ pub mod transfer_syntaxes {
         deflated: false,
     };
 
+    pub const HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY: TransferSyntax = TransferSyntax {
+        uid: "1.2.840.10008.1.2.4.201",
+        name: "High-Throughput JPEG 2000 Image Compression (Lossless Only)",
+        byte_order: ByteOrder::LittleEndian,
+        vr_encoding: VrEncoding::Explicit,
+        pixel_encoding: PixelEncoding::Encapsulated,
+        deflated: false,
+    };
+
+    pub const HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY: TransferSyntax = TransferSyntax {
+        uid: "1.2.840.10008.1.2.4.202",
+        name: "High-Throughput JPEG 2000 RPCL Image Compression (Lossless Only)",
+        byte_order: ByteOrder::LittleEndian,
+        vr_encoding: VrEncoding::Explicit,
+        pixel_encoding: PixelEncoding::Encapsulated,
+        deflated: false,
+    };
+
+    pub const HIGH_THROUGHPUT_JPEG_2000: TransferSyntax = TransferSyntax {
+        uid: "1.2.840.10008.1.2.4.203",
+        name: "High-Throughput JPEG 2000 Image Compression",
+        byte_order: ByteOrder::LittleEndian,
+        vr_encoding: VrEncoding::Explicit,
+        pixel_encoding: PixelEncoding::Encapsulated,
+        deflated: false,
+    };
+
     pub const RLE_LOSSLESS: TransferSyntax = TransferSyntax {
         uid: "1.2.840.10008.1.2.5",
         name: "RLE Lossless",
@@ -217,6 +244,9 @@ pub mod transfer_syntaxes {
         &JPEG_LS_LOSSY,
         &JPEG_2000_LOSSLESS,
         &JPEG_2000,
+        &HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY,
+        &HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY,
+        &HIGH_THROUGHPUT_JPEG_2000,
         &RLE_LOSSLESS,
     ];
 

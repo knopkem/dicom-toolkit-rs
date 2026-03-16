@@ -103,7 +103,7 @@ fn main() {
             Value::PixelData(PixelData::Native { bytes }) => bytes.clone(),
             Value::PixelData(PixelData::Encapsulated { .. }) => {
                 let ts_uid = &ff.meta.transfer_syntax_uid;
-                match GLOBAL_REGISTRY.find(ts_uid) {
+                match GLOBAL_REGISTRY.find_decoder(ts_uid) {
                     Some(codec) => match codec.decode(
                         match &elem.value {
                             Value::PixelData(pd) => pd,

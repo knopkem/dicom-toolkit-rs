@@ -8,24 +8,28 @@ use std::process;
 use clap::Parser;
 
 use dicom_toolkit_codec::jp2k::decoder::decode_jp2k;
+use dicom_toolkit_core::uid::transfer_syntax;
 use dicom_toolkit_data::value::{PixelData, Value};
 use dicom_toolkit_data::FileFormat;
 use dicom_toolkit_dict::tags;
 
-const TS_EXPLICIT_VR_LE: &str = "1.2.840.10008.1.2.1";
-const TS_JPEG2000_LOSSLESS: &str = "1.2.840.10008.1.2.4.90";
-const TS_JPEG2000: &str = "1.2.840.10008.1.2.4.91";
+const TS_EXPLICIT_VR_LE: &str = transfer_syntax::EXPLICIT_VR_LITTLE_ENDIAN;
+const TS_JPEG2000_LOSSLESS: &str = transfer_syntax::JPEG_2000_LOSSLESS;
+const TS_JPEG2000: &str = transfer_syntax::JPEG_2000;
+const TS_HTJ2K_LOSSLESS: &str = transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY;
+const TS_HTJ2K_RPCL_LOSSLESS: &str = transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY;
+const TS_HTJ2K: &str = transfer_syntax::HIGH_THROUGHPUT_JPEG_2000;
 
 #[derive(Parser)]
 #[command(
     name = "dcmdjp2k",
-    about = "Decode JPEG 2000 compressed DICOM file",
-    long_about = "Reads a DICOM file compressed with JPEG 2000 transfer syntax and\n\
+    about = "Decode JPEG 2000 or HTJ2K compressed DICOM file",
+    long_about = "Reads a DICOM file compressed with JPEG 2000 or HTJ2K transfer syntax and\n\
                   decompresses the pixel data. Writes a DICOM Part 10 file using\n\
                   Explicit VR Little Endian transfer syntax."
 )]
 struct Args {
-    /// Input DICOM file (JPEG 2000 compressed)
+    /// Input DICOM file (JPEG 2000 / HTJ2K compressed)
     #[arg(value_name = "INPUT")]
     input: PathBuf,
 
@@ -50,9 +54,14 @@ fn main() {
     };
 
     let ts = &ff.meta.transfer_syntax_uid;
-    if ts != TS_JPEG2000_LOSSLESS && ts != TS_JPEG2000 {
+    if ts != TS_JPEG2000_LOSSLESS
+        && ts != TS_JPEG2000
+        && ts != TS_HTJ2K_LOSSLESS
+        && ts != TS_HTJ2K_RPCL_LOSSLESS
+        && ts != TS_HTJ2K
+    {
         eprintln!(
-            "Warning: input transfer syntax is not JPEG 2000 ({ts}), attempting decode anyway"
+            "Warning: input transfer syntax is not JPEG 2000 / HTJ2K ({ts}), attempting decode anyway"
         );
     }
 

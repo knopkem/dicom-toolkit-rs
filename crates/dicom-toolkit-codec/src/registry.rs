@@ -20,6 +20,16 @@ pub trait ImageCodec: Send + Sync {
     /// UID(s) of the transfer syntax(es) this codec handles.
     fn transfer_syntax_uids(&self) -> &[&str];
 
+    /// UID(s) of the transfer syntax(es) this codec can decode.
+    fn decode_transfer_syntax_uids(&self) -> &[&str] {
+        self.transfer_syntax_uids()
+    }
+
+    /// UID(s) of the transfer syntax(es) this codec can encode.
+    fn encode_transfer_syntax_uids(&self) -> &[&str] {
+        self.transfer_syntax_uids()
+    }
+
     /// Decode all frames in `encapsulated` pixel data.
     ///
     /// Returns the raw, uncompressed pixel bytes for all frames concatenated.
@@ -245,12 +255,30 @@ impl ImageCodec for JpegLsCodec {
 
 struct Jp2kRegistryCodec;
 
+const JP2K_DECODE_TRANSFER_SYNTAXES: &[&str] = &[
+    transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
+    transfer_syntaxes::JPEG_2000.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid,
+];
+
+const JP2K_ENCODE_TRANSFER_SYNTAXES: &[&str] = &[
+    transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
+    transfer_syntaxes::JPEG_2000.uid,
+];
+
 impl ImageCodec for Jp2kRegistryCodec {
     fn transfer_syntax_uids(&self) -> &[&str] {
-        &[
-            transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
-            transfer_syntaxes::JPEG_2000.uid,
-        ]
+        JP2K_ENCODE_TRANSFER_SYNTAXES
+    }
+
+    fn decode_transfer_syntax_uids(&self) -> &[&str] {
+        JP2K_DECODE_TRANSFER_SYNTAXES
+    }
+
+    fn encode_transfer_syntax_uids(&self) -> &[&str] {
+        JP2K_ENCODE_TRANSFER_SYNTAXES
     }
 
     fn decode(
@@ -308,6 +336,8 @@ impl ImageCodec for Jp2kRegistryCodec {
 /// Registry of all available image codecs, keyed by transfer syntax UID.
 pub struct CodecRegistry {
     codecs: RwLock<HashMap<String, Arc<dyn ImageCodec>>>,
+    decoder_codecs: RwLock<HashMap<String, Arc<dyn ImageCodec>>>,
+    encoder_codecs: RwLock<HashMap<String, Arc<dyn ImageCodec>>>,
 }
 
 impl CodecRegistry {
@@ -315,18 +345,34 @@ impl CodecRegistry {
     pub fn new() -> Self {
         Self {
             codecs: RwLock::new(HashMap::new()),
+            decoder_codecs: RwLock::new(HashMap::new()),
+            encoder_codecs: RwLock::new(HashMap::new()),
         }
     }
 
     /// Register a codec (replaces any existing codec for the same UID).
     pub fn register(&self, codec: Arc<dyn ImageCodec>) {
-        let mut map = self.codecs.write().unwrap();
-        for uid in codec.transfer_syntax_uids() {
-            map.insert(uid.to_string(), Arc::clone(&codec));
+        let decode_uids = codec.decode_transfer_syntax_uids();
+        let encode_uids = codec.encode_transfer_syntax_uids();
+
+        let mut codecs = self.codecs.write().unwrap();
+        let mut decoder_codecs = self.decoder_codecs.write().unwrap();
+        let mut encoder_codecs = self.encoder_codecs.write().unwrap();
+
+        for uid in decode_uids {
+            decoder_codecs.insert(uid.to_string(), Arc::clone(&codec));
+            if encode_uids.contains(uid) {
+                codecs.insert(uid.to_string(), Arc::clone(&codec));
+            }
+        }
+
+        for uid in encode_uids {
+            encoder_codecs.insert(uid.to_string(), Arc::clone(&codec));
         }
     }
 
-    /// Look up a codec by transfer syntax UID.
+    /// Look up a codec that supports both decoding and encoding for a transfer
+    /// syntax UID.
     pub fn find(&self, transfer_syntax_uid: &str) -> Option<Arc<dyn ImageCodec>> {
         self.codecs
             .read()
@@ -335,9 +381,50 @@ impl CodecRegistry {
             .cloned()
     }
 
-    /// Look up a codec or return a [`DcmError::NoCodec`] error.
+    /// Look up a decoder by transfer syntax UID.
+    pub fn find_decoder(&self, transfer_syntax_uid: &str) -> Option<Arc<dyn ImageCodec>> {
+        self.decoder_codecs
+            .read()
+            .unwrap()
+            .get(transfer_syntax_uid)
+            .cloned()
+    }
+
+    /// Look up an encoder by transfer syntax UID.
+    pub fn find_encoder(&self, transfer_syntax_uid: &str) -> Option<Arc<dyn ImageCodec>> {
+        self.encoder_codecs
+            .read()
+            .unwrap()
+            .get(transfer_syntax_uid)
+            .cloned()
+    }
+
+    /// Look up a codec that supports both decoding and encoding or return a
+    /// [`DcmError::NoCodec`] error.
     pub fn find_required(&self, transfer_syntax_uid: &str) -> DcmResult<Arc<dyn ImageCodec>> {
         self.find(transfer_syntax_uid)
+            .ok_or_else(|| DcmError::NoCodec {
+                uid: transfer_syntax_uid.to_string(),
+            })
+    }
+
+    /// Look up a decoder or return a [`DcmError::NoCodec`] error.
+    pub fn find_decoder_required(
+        &self,
+        transfer_syntax_uid: &str,
+    ) -> DcmResult<Arc<dyn ImageCodec>> {
+        self.find_decoder(transfer_syntax_uid)
+            .ok_or_else(|| DcmError::NoCodec {
+                uid: transfer_syntax_uid.to_string(),
+            })
+    }
+
+    /// Look up an encoder or return a [`DcmError::NoCodec`] error.
+    pub fn find_encoder_required(
+        &self,
+        transfer_syntax_uid: &str,
+    ) -> DcmResult<Arc<dyn ImageCodec>> {
+        self.find_encoder(transfer_syntax_uid)
             .ok_or_else(|| DcmError::NoCodec {
                 uid: transfer_syntax_uid.to_string(),
             })
@@ -375,6 +462,9 @@ const SUPPORTED_TS: &[&str] = &[
     transfer_syntaxes::JPEG_LS_LOSSY.uid,
     transfer_syntaxes::JPEG_2000_LOSSLESS.uid,
     transfer_syntaxes::JPEG_2000.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid,
+    transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid,
 ];
 
 /// Registered codec information for a transfer syntax.
@@ -425,7 +515,10 @@ pub fn decode_pixel_data(
             crate::jpeg_ls::JpegLsCodec::decode_frame(data).map(|f| f.pixels)
         }
         uid if uid == transfer_syntaxes::JPEG_2000_LOSSLESS.uid
-            || uid == transfer_syntaxes::JPEG_2000.uid =>
+            || uid == transfer_syntaxes::JPEG_2000.uid
+            || uid == transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY.uid
+            || uid == transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY.uid
+            || uid == transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid =>
         {
             crate::jp2k::Jp2kCodec::decode_frame(data).map(|f| f.pixels)
         }
@@ -467,6 +560,18 @@ mod tests {
     }
 
     #[test]
+    fn global_registry_has_htj2k_decoder() {
+        let codec = GLOBAL_REGISTRY.find_decoder(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid);
+        assert!(codec.is_some());
+    }
+
+    #[test]
+    fn global_registry_does_not_expose_decode_only_htj2k_as_generic_codec() {
+        let codec = GLOBAL_REGISTRY.find(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid);
+        assert!(codec.is_none());
+    }
+
+    #[test]
     fn unknown_uid_returns_none() {
         let codec = GLOBAL_REGISTRY.find("1.2.3.4.5.999");
         assert!(codec.is_none());
@@ -491,6 +596,11 @@ mod tests {
     }
 
     #[test]
+    fn codec_registry_can_decode_htj2k() {
+        assert!(can_decode(transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid));
+    }
+
+    #[test]
     fn codec_registry_cannot_decode_unknown() {
         assert!(!can_decode("1.2.3.4.5.999"));
     }
@@ -501,6 +611,7 @@ mod tests {
         assert!(!list.is_empty());
         assert!(list.contains(&transfer_syntaxes::RLE_LOSSLESS.uid));
         assert!(list.contains(&transfer_syntaxes::JPEG_BASELINE.uid));
+        assert!(list.contains(&transfer_syntaxes::HIGH_THROUGHPUT_JPEG_2000.uid));
     }
 
     #[test]

@@ -43,6 +43,18 @@ static UID_NAMES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
     map.insert(transfer_syntax::JPEG_LS_LOSSY, "JPEG-LS Lossy");
     map.insert(transfer_syntax::JPEG_2000_LOSSLESS, "JPEG 2000 Lossless");
     map.insert(transfer_syntax::JPEG_2000, "JPEG 2000");
+    map.insert(
+        transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_LOSSLESS_ONLY,
+        "High-Throughput JPEG 2000 Lossless Only",
+    );
+    map.insert(
+        transfer_syntax::HIGH_THROUGHPUT_JPEG_2000_RPCL_LOSSLESS_ONLY,
+        "High-Throughput JPEG 2000 RPCL Lossless Only",
+    );
+    map.insert(
+        transfer_syntax::HIGH_THROUGHPUT_JPEG_2000,
+        "High-Throughput JPEG 2000",
+    );
     map.insert(transfer_syntax::RLE_LOSSLESS, "RLE Lossless");
 
     // SOP Classes
