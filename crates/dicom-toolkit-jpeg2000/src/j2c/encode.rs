@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 
 use super::bitplane_encode;
 use super::build::SubBandType;
-use super::codestream_write::{self, EncodeParams};
+use super::codestream_write::{self, BlockCodingMode, EncodeParams};
 use super::fdwt::{self, DwtDecomposition};
 use super::forward_mct;
 use super::packet_encode::{self, CodeBlockPacketData, ResolutionPacket, SubbandPrecinct};
@@ -64,6 +64,28 @@ pub fn encode(
     bit_depth: u8,
     signed: bool,
     options: &EncodeOptions,
+) -> Result<Vec<u8>, &'static str> {
+    encode_impl(
+        pixels,
+        width,
+        height,
+        num_components,
+        bit_depth,
+        signed,
+        options,
+        BlockCodingMode::Classic,
+    )
+}
+
+fn encode_impl(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    num_components: u8,
+    bit_depth: u8,
+    signed: bool,
+    options: &EncodeOptions,
+    block_coding_mode: BlockCodingMode,
 ) -> Result<Vec<u8>, &'static str> {
     if width == 0 || height == 0 {
         return Err("invalid dimensions");
@@ -131,10 +153,11 @@ pub fn encode(
             &step_sizes[0],
             guard_bits,
             options.reversible,
+            block_coding_mode,
             cb_width,
             cb_height,
             SubBandType::LowLow,
-        );
+        )?;
         resolution_packets.push(ResolutionPacket {
             subbands: vec![ll_subband],
         });
@@ -151,10 +174,11 @@ pub fn encode(
                 &step_sizes[step_base],
                 guard_bits,
                 options.reversible,
+                block_coding_mode,
                 cb_width,
                 cb_height,
                 SubBandType::HighLow,
-            );
+            )?;
 
             // LH subband
             let lh_subband = encode_subband(
@@ -164,10 +188,11 @@ pub fn encode(
                 &step_sizes[step_base + 1],
                 guard_bits,
                 options.reversible,
+                block_coding_mode,
                 cb_width,
                 cb_height,
                 SubBandType::LowHigh,
-            );
+            )?;
 
             // HH subband
             let hh_subband = encode_subband(
@@ -177,10 +202,11 @@ pub fn encode(
                 &step_sizes[step_base + 2],
                 guard_bits,
                 options.reversible,
+                block_coding_mode,
                 cb_width,
                 cb_height,
                 SubBandType::HighHigh,
-            );
+            )?;
 
             resolution_packets.push(ResolutionPacket {
                 subbands: vec![hl_subband, lh_subband, hh_subband],
@@ -210,6 +236,7 @@ pub fn encode(
         num_layers: 1,
         use_mct,
         guard_bits,
+        block_coding_mode,
     };
 
     Ok(codestream_write::write_codestream(
@@ -227,16 +254,17 @@ fn encode_subband(
     step_size: &QuantStepSize,
     guard_bits: u8,
     reversible: bool,
+    block_coding_mode: BlockCodingMode,
     cb_width: u32,
     cb_height: u32,
     sub_band_type: SubBandType,
-) -> SubbandPrecinct {
+) -> Result<SubbandPrecinct, &'static str> {
     if width == 0 || height == 0 {
-        return SubbandPrecinct {
+        return Ok(SubbandPrecinct {
             code_blocks: Vec::new(),
             num_cbs_x: 0,
             num_cbs_y: 0,
-        };
+        });
     }
 
     // Quantize
@@ -270,6 +298,12 @@ fn encode_subband(
             }
 
             // Encode
+            if block_coding_mode == BlockCodingMode::HighThroughput
+                && cb_coeffs.iter().any(|&coefficient| coefficient != 0)
+            {
+                return Err("HTJ2K block encoding not implemented");
+            }
+
             let encoded = bitplane_encode::encode_code_block(
                 &cb_coeffs,
                 cbw,
@@ -288,11 +322,11 @@ fn encode_subband(
         }
     }
 
-    SubbandPrecinct {
+    Ok(SubbandPrecinct {
         code_blocks,
         num_cbs_x,
         num_cbs_y,
-    }
+    })
 }
 
 /// Convert interleaved pixel bytes to per-component f32 arrays.
@@ -352,6 +386,28 @@ fn max_decomposition_levels(width: u32, height: u32) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DecodeSettings, Image};
+
+    fn encode_high_throughput_for_test(
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        num_components: u8,
+        bit_depth: u8,
+        signed: bool,
+        options: &EncodeOptions,
+    ) -> Result<Vec<u8>, &'static str> {
+        encode_impl(
+            pixels,
+            width,
+            height,
+            num_components,
+            bit_depth,
+            signed,
+            options,
+            BlockCodingMode::HighThroughput,
+        )
+    }
 
     #[test]
     fn test_encode_8bit_gray() {
@@ -451,6 +507,70 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_encode_high_throughput_zero_image_roundtrip() {
+        let width = 4u32;
+        let height = 4u32;
+        let sample = 2048u16.to_le_bytes();
+        let mut pixels = Vec::with_capacity((width * height * 2) as usize);
+        for _ in 0..(width * height) {
+            pixels.extend_from_slice(&sample);
+        }
+
+        let codestream = encode_high_throughput_for_test(
+            &pixels,
+            width,
+            height,
+            1,
+            12,
+            false,
+            &EncodeOptions {
+                num_decomposition_levels: 2,
+                ..Default::default()
+            },
+        )
+        .expect("HT all-zero encode");
+
+        assert!(codestream.windows(2).any(|window| window == [0xFF, 0x50]));
+        let cod_offset = codestream
+            .windows(2)
+            .position(|window| window == [0xFF, 0x52])
+            .expect("COD marker");
+        assert_eq!(codestream[cod_offset + 12], 0x40);
+
+        let image =
+            Image::new(&codestream, &DecodeSettings::default()).expect("parse HT codestream");
+        let decoded = image.decode_native().expect("decode HT codestream");
+
+        assert_eq!(decoded.width, width);
+        assert_eq!(decoded.height, height);
+        assert_eq!(decoded.bit_depth, 12);
+        assert_eq!(decoded.data, pixels);
+    }
+
+    #[test]
+    fn test_encode_high_throughput_rejects_nonzero_blocks() {
+        let width = 4u32;
+        let height = 4u32;
+        let pixels: Vec<u8> = (0..(width * height)).map(|i| i as u8).collect();
+
+        let error = encode_high_throughput_for_test(
+            &pixels,
+            width,
+            height,
+            1,
+            8,
+            false,
+            &EncodeOptions {
+                num_decomposition_levels: 2,
+                ..Default::default()
+            },
+        )
+        .expect_err("HT non-zero encode should fail");
+
+        assert_eq!(error, "HTJ2K block encoding not implemented");
     }
 
     #[test]

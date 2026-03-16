@@ -7,6 +7,15 @@ use alloc::vec::Vec;
 
 use super::codestream::markers;
 
+/// Code-block coding mode for the codestream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlockCodingMode {
+    /// Classic JPEG 2000 Part 1 EBCOT block coding.
+    Classic,
+    /// High-throughput JPEG 2000 Part 15 block coding.
+    HighThroughput,
+}
+
 /// Parameters for encoding a JPEG 2000 codestream.
 #[derive(Debug, Clone)]
 pub(crate) struct EncodeParams {
@@ -22,6 +31,7 @@ pub(crate) struct EncodeParams {
     pub(crate) num_layers: u8,
     pub(crate) use_mct: bool,
     pub(crate) guard_bits: u8,
+    pub(crate) block_coding_mode: BlockCodingMode,
 }
 
 impl Default for EncodeParams {
@@ -39,6 +49,7 @@ impl Default for EncodeParams {
             num_layers: 1,
             use_mct: false,
             guard_bits: 1,
+            block_coding_mode: BlockCodingMode::Classic,
         }
     }
 }
@@ -56,6 +67,10 @@ pub(crate) fn write_codestream(
 
     // SIZ (Image and tile sizes)
     write_siz_marker(&mut out, params);
+
+    if params.block_coding_mode == BlockCodingMode::HighThroughput {
+        write_cap_marker(&mut out, params);
+    }
 
     // COD (Coding style defaults)
     write_cod_marker(&mut out, params);
@@ -130,6 +145,28 @@ fn write_siz_marker(out: &mut Vec<u8>, params: &EncodeParams) {
     }
 }
 
+/// Write CAP marker segment (Part 15 extended capabilities).
+fn write_cap_marker(out: &mut Vec<u8>, params: &EncodeParams) {
+    write_marker(out, markers::CAP);
+    out.extend_from_slice(&8u16.to_be_bytes());
+    out.extend_from_slice(&0x0002_0000u32.to_be_bytes());
+    out.extend_from_slice(&ht_capability_word(params).to_be_bytes());
+}
+
+fn ht_capability_word(params: &EncodeParams) -> u16 {
+    let magnitude_bits = u32::from(params.bit_depth.saturating_sub(1));
+    let bp = if magnitude_bits <= 8 {
+        0
+    } else if magnitude_bits < 28 {
+        magnitude_bits - 8
+    } else {
+        13 + (magnitude_bits >> 2)
+    };
+
+    let wavelet_flag = if params.reversible { 0u16 } else { 0x0020u16 };
+    wavelet_flag | (bp as u16)
+}
+
 /// Write COD marker segment (A.6.1).
 fn write_cod_marker(out: &mut Vec<u8>, params: &EncodeParams) {
     write_marker(out, markers::COD);
@@ -153,8 +190,11 @@ fn write_cod_marker(out: &mut Vec<u8>, params: &EncodeParams) {
     out.push(params.code_block_width_exp);
     // Code-block height exponent - 2
     out.push(params.code_block_height_exp);
-    // Code-block style (no special flags)
-    out.push(0x00);
+    // Code-block style
+    out.push(match params.block_coding_mode {
+        BlockCodingMode::Classic => 0x00,
+        BlockCodingMode::HighThroughput => 0x40,
+    });
     // Wavelet transform: 0 = irreversible 9-7, 1 = reversible 5-3
     out.push(if params.reversible { 1 } else { 0 });
 }
@@ -211,6 +251,12 @@ fn write_sot_marker(out: &mut Vec<u8>, tile_index: u16, tile_part_length: u32) {
 mod tests {
     use super::*;
 
+    fn find_marker_offset(codestream: &[u8], marker: u8) -> Option<usize> {
+        codestream
+            .windows(2)
+            .position(|window| window == [0xFF, marker])
+    }
+
     #[test]
     fn test_write_minimal_codestream() {
         let params = EncodeParams {
@@ -240,6 +286,64 @@ mod tests {
         let len = codestream.len();
         assert_eq!(codestream[len - 2], 0xFF);
         assert_eq!(codestream[len - 1], markers::EOC);
+    }
+
+    #[test]
+    fn test_ht_capability_word_matches_fixture_examples() {
+        let params = EncodeParams {
+            bit_depth: 11,
+            reversible: true,
+            block_coding_mode: BlockCodingMode::HighThroughput,
+            ..Default::default()
+        };
+        assert_eq!(ht_capability_word(&params), 0x0002);
+
+        let params = EncodeParams {
+            bit_depth: 12,
+            reversible: true,
+            block_coding_mode: BlockCodingMode::HighThroughput,
+            ..Default::default()
+        };
+        assert_eq!(ht_capability_word(&params), 0x0003);
+
+        let params = EncodeParams {
+            bit_depth: 12,
+            reversible: false,
+            block_coding_mode: BlockCodingMode::HighThroughput,
+            ..Default::default()
+        };
+        assert_eq!(ht_capability_word(&params), 0x0023);
+    }
+
+    #[test]
+    fn test_write_ht_lossless_codestream_headers() {
+        let params = EncodeParams {
+            width: 3,
+            height: 5,
+            num_components: 1,
+            bit_depth: 12,
+            num_decomposition_levels: 1,
+            reversible: true,
+            num_layers: 1,
+            block_coding_mode: BlockCodingMode::HighThroughput,
+            ..Default::default()
+        };
+
+        let tile_data = vec![0u8; 1];
+        let step_sizes = vec![(12u16, 0u16), (13, 0), (13, 0), (14, 0)];
+        let codestream = write_codestream(&params, &tile_data, &step_sizes);
+
+        let cap_offset = find_marker_offset(&codestream, markers::CAP).expect("CAP marker");
+        let cap_len = u16::from_be_bytes([codestream[cap_offset + 2], codestream[cap_offset + 3]]);
+        assert_eq!(cap_len, 8);
+        assert_eq!(
+            &codestream[cap_offset + 4..cap_offset + 10],
+            &[0x00, 0x02, 0x00, 0x00, 0x00, 0x03]
+        );
+
+        let cod_offset = find_marker_offset(&codestream, markers::COD).expect("COD marker");
+        assert_eq!(codestream[cod_offset + 12], 0x40);
+        assert!(find_marker_offset(&codestream, markers::CPF).is_none());
     }
 
     #[test]
