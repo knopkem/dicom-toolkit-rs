@@ -93,7 +93,9 @@ pub struct AssociateRj {
 #[derive(Debug, Clone)]
 pub struct Pdv {
     pub context_id: u8,
-    /// Bit 0: last fragment; bit 1: command (1) / data (0).
+    /// PDV message control header (DICOM PS3.8 §9.3.1):
+    /// - Bit 0: 1 = command information, 0 = data set information
+    /// - Bit 1: 1 = last fragment, 0 = not the last fragment
     pub msg_control: u8,
     pub data: Vec<u8>,
 }
@@ -101,12 +103,12 @@ pub struct Pdv {
 impl Pdv {
     /// Returns `true` if this is the last fragment of the message.
     pub fn is_last(&self) -> bool {
-        self.msg_control & 0x01 != 0
+        self.msg_control & 0x02 != 0
     }
 
     /// Returns `true` if this PDV carries a DIMSE command dataset.
     pub fn is_command(&self) -> bool {
-        self.msg_control & 0x02 != 0
+        self.msg_control & 0x01 != 0
     }
 }
 
@@ -738,10 +740,10 @@ mod tests {
     #[test]
     fn p_data_tf_data_pdv() {
         let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
-        // msg_control: bit0=last, bit1=0 → data PDV
+        // DICOM PS3.8 §9.3.1: bit0=0 (data), bit1=1 (last) → 0x02
         let pdv = Pdv {
             context_id: 3,
-            msg_control: 0x01,
+            msg_control: 0x02,
             data: data.clone(),
         };
         let encoded = encode_p_data_tf(&[pdv]);

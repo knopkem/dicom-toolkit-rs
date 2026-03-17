@@ -55,6 +55,13 @@ pub struct Association {
     pub max_pdu_length: u32,
     /// Remote socket address.
     pub peer_addr: SocketAddr,
+    /// Buffered PDVs from the most recently read P-DATA-TF PDU.
+    ///
+    /// DICOM PS3.8 §9.3.4 allows multiple PDVs per P-DATA-TF.
+    /// The original DCMTK C++ buffers all PDVs in the DUL layer
+    /// (`PRIVATE_ASSOCIATIONKEY::pdvIndex/pdvCount`). This queue
+    /// replicates that behaviour so that no PDVs are silently lost.
+    pdv_queue: std::collections::VecDeque<pdu::Pdv>,
 }
 
 impl Association {
@@ -132,6 +139,7 @@ impl Association {
                     presentation_contexts: pcs,
                     max_pdu_length: ac.max_pdu_length,
                     peer_addr,
+                    pdv_queue: std::collections::VecDeque::new(),
                 })
             }
             Pdu::AssociateRj(rj) => Err(DcmError::AssociationRejected {
@@ -219,6 +227,7 @@ impl Association {
             presentation_contexts: accepted_pcs,
             max_pdu_length: config.max_pdu_length,
             peer_addr,
+            pdv_queue: std::collections::VecDeque::new(),
         })
     }
 
@@ -253,11 +262,12 @@ impl Association {
         let n = chunks.len();
         for (i, chunk) in chunks.iter().enumerate() {
             let last_fragment = is_last && (i == n - 1);
+            // DICOM PS3.8 §9.3.1: bit 0 = command, bit 1 = last
             let mut ctrl: u8 = 0;
-            if last_fragment {
+            if is_command {
                 ctrl |= 0x01;
             }
-            if is_command {
+            if last_fragment {
                 ctrl |= 0x02;
             }
             let pdv = Pdv {
@@ -276,15 +286,27 @@ impl Association {
     ///
     /// Returns `(context_id, is_command, is_last, data)`.
     /// Handles A-ABORT and A-RELEASE-RQ from the peer transparently.
+    ///
+    /// When a P-DATA-TF contains multiple PDVs (allowed by DICOM PS3.8 §9.3.4),
+    /// the remaining PDVs are buffered internally and returned by subsequent
+    /// calls without additional network I/O — matching the DCMTK C++ DUL layer
+    /// behaviour (`DUL_NextPDV` / `DUL_ReadPDVs`).
     pub async fn recv_pdata(&mut self) -> DcmResult<(u8, bool, bool, Vec<u8>)> {
         self.ensure_established()?;
+
+        // Return a buffered PDV from a previous P-DATA-TF if available.
+        if let Some(pdv) = self.pdv_queue.pop_front() {
+            return Ok((pdv.context_id, pdv.is_command(), pdv.is_last(), pdv.data));
+        }
 
         loop {
             let pdu = pdu::read_pdu(&mut self.stream).await?;
 
             match pdu {
                 Pdu::PDataTf(pd) => {
-                    if let Some(pdv) = pd.pdvs.into_iter().next() {
+                    let mut iter = pd.pdvs.into_iter();
+                    if let Some(pdv) = iter.next() {
+                        self.pdv_queue.extend(iter);
                         return Ok((pdv.context_id, pdv.is_command(), pdv.is_last(), pdv.data));
                     }
                     // empty P-DATA-TF — keep waiting

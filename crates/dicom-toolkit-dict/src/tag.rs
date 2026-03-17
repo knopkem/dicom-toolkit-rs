@@ -125,6 +125,8 @@ pub mod tags {
     pub const PATIENT_NAME: Tag = Tag::new(0x0010, 0x0010);
     pub const PATIENT_ID: Tag = Tag::new(0x0010, 0x0020);
     pub const PATIENT_BIRTH_DATE: Tag = Tag::new(0x0010, 0x0030);
+    /// Issuer of Patient ID (0010,0021) — LO.
+    pub const ISSUER_OF_PATIENT_ID: Tag = Tag::new(0x0010, 0x0021);
     pub const PATIENT_SEX: Tag = Tag::new(0x0010, 0x0040);
     pub const PATIENT_AGE: Tag = Tag::new(0x0010, 0x1010);
     pub const PATIENT_SIZE: Tag = Tag::new(0x0010, 0x1020);
@@ -146,6 +148,8 @@ pub mod tags {
     pub const ACCESSION_NUMBER: Tag = Tag::new(0x0008, 0x0050);
     pub const QUERY_RETRIEVE_LEVEL: Tag = Tag::new(0x0008, 0x0052);
     pub const MODALITY: Tag = Tag::new(0x0008, 0x0060);
+    /// Modalities in Study (0008,0061) — CS.
+    pub const MODALITIES_IN_STUDY: Tag = Tag::new(0x0008, 0x0061);
     pub const MANUFACTURER: Tag = Tag::new(0x0008, 0x0070);
     pub const INSTITUTION_NAME: Tag = Tag::new(0x0008, 0x0080);
     pub const REFERRING_PHYSICIAN_NAME: Tag = Tag::new(0x0008, 0x0090);
@@ -168,6 +172,18 @@ pub mod tags {
     pub const IMAGE_ORIENTATION_PATIENT: Tag = Tag::new(0x0020, 0x0037);
     pub const FRAME_OF_REFERENCE_UID: Tag = Tag::new(0x0020, 0x0052);
     pub const SLICE_LOCATION: Tag = Tag::new(0x0020, 0x1041);
+    /// Number of Patient Related Studies (0020,1200) — IS.
+    pub const NUMBER_OF_PATIENT_RELATED_STUDIES: Tag = Tag::new(0x0020, 0x1200);
+    /// Number of Patient Related Series (0020,1202) — IS.
+    pub const NUMBER_OF_PATIENT_RELATED_SERIES: Tag = Tag::new(0x0020, 0x1202);
+    /// Number of Patient Related Instances (0020,1204) — IS.
+    pub const NUMBER_OF_PATIENT_RELATED_INSTANCES: Tag = Tag::new(0x0020, 0x1204);
+    /// Number of Study Related Series (0020,1206) — IS.
+    pub const NUMBER_OF_STUDY_RELATED_SERIES: Tag = Tag::new(0x0020, 0x1206);
+    /// Number of Study Related Instances (0020,1208) — IS.
+    pub const NUMBER_OF_STUDY_RELATED_INSTANCES: Tag = Tag::new(0x0020, 0x1208);
+    /// Number of Series Related Instances (0020,1209) — IS.
+    pub const NUMBER_OF_SERIES_RELATED_INSTANCES: Tag = Tag::new(0x0020, 0x1209);
     pub const NUMBER_OF_FRAMES: Tag = Tag::new(0x0028, 0x0008);
 
     // ── Image Pixel Module (0028,xxxx) ───────────────────────────────
