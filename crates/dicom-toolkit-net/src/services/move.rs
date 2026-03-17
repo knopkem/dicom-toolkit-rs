@@ -8,6 +8,7 @@ use crate::association::Association;
 use crate::config::AssociationConfig;
 use crate::presentation::PresentationContextRq;
 use crate::services::provider::{DestinationLookup, MoveEvent, MoveServiceProvider};
+use crate::services::recv_command_data_bytes;
 use crate::services::store::c_store;
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -148,7 +149,7 @@ where
         .trim()
         .to_string();
 
-    let query_bytes = assoc.recv_dimse_data().await?;
+    let query_bytes = recv_command_data_bytes(assoc, cmd).await?;
 
     let ts = assoc
         .context_by_id(ctx_id)

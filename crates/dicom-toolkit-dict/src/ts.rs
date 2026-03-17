@@ -70,9 +70,8 @@ impl TransferSyntax {
 
     /// Looks up the VR for a tag when using implicit VR transfer syntax.
     /// Returns `None` if the VR cannot be determined.
-    pub fn resolve_vr(&self, _tag: crate::tag::Tag) -> Option<Vr> {
-        // TODO: Look up from data dictionary when impl-dict-tag is done.
-        None
+    pub fn resolve_vr(&self, tag: crate::tag::Tag) -> Option<Vr> {
+        crate::tag::vr_for_tag(tag)
     }
 }
 

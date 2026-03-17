@@ -99,6 +99,129 @@ pub struct DictEntry {
     pub vm_max: u32,
 }
 
+/// Look up the VR for a tag in the built-in dictionary subset.
+pub fn vr_for_tag(tag: Tag) -> Option<Vr> {
+    let vr = match tag {
+        // File Meta Information (0002,xxxx)
+        tags::FILE_META_INFORMATION_GROUP_LENGTH => Vr::UL,
+        tags::FILE_META_INFORMATION_VERSION => Vr::OB,
+        tags::MEDIA_STORAGE_SOP_CLASS_UID => Vr::UI,
+        tags::MEDIA_STORAGE_SOP_INSTANCE_UID => Vr::UI,
+        tags::TRANSFER_SYNTAX_UID => Vr::UI,
+        tags::IMPLEMENTATION_CLASS_UID => Vr::UI,
+        tags::IMPLEMENTATION_VERSION_NAME => Vr::SH,
+        tags::SOURCE_APPLICATION_ENTITY_TITLE => Vr::AE,
+        tags::SENDING_APPLICATION_ENTITY_TITLE => Vr::AE,
+        tags::RECEIVING_APPLICATION_ENTITY_TITLE => Vr::AE,
+        tags::PRIVATE_INFORMATION_CREATOR_UID => Vr::UI,
+        tags::PRIVATE_INFORMATION => Vr::OB,
+
+        // General Study / Patient / Series
+        tags::PATIENT_NAME => Vr::PN,
+        tags::PATIENT_ID => Vr::LO,
+        tags::PATIENT_BIRTH_DATE => Vr::DA,
+        tags::ISSUER_OF_PATIENT_ID => Vr::LO,
+        tags::PATIENT_SEX => Vr::CS,
+        tags::PATIENT_AGE => Vr::AS,
+        tags::PATIENT_SIZE => Vr::DS,
+        tags::PATIENT_WEIGHT => Vr::DS,
+        tags::SPECIFIC_CHARACTER_SET => Vr::CS,
+        tags::IMAGE_TYPE => Vr::CS,
+        tags::SOP_CLASS_UID => Vr::UI,
+        tags::SOP_INSTANCE_UID => Vr::UI,
+        tags::STUDY_DATE => Vr::DA,
+        tags::SERIES_DATE => Vr::DA,
+        tags::ACQUISITION_DATE => Vr::DA,
+        tags::CONTENT_DATE => Vr::DA,
+        tags::STUDY_TIME => Vr::TM,
+        tags::SERIES_TIME => Vr::TM,
+        tags::ACQUISITION_TIME => Vr::TM,
+        tags::CONTENT_TIME => Vr::TM,
+        tags::ACCESSION_NUMBER => Vr::SH,
+        tags::QUERY_RETRIEVE_LEVEL => Vr::CS,
+        tags::MODALITY => Vr::CS,
+        tags::MODALITIES_IN_STUDY => Vr::CS,
+        tags::MANUFACTURER => Vr::LO,
+        tags::INSTITUTION_NAME => Vr::LO,
+        tags::REFERRING_PHYSICIAN_NAME => Vr::PN,
+        tags::STUDY_DESCRIPTION => Vr::LO,
+        tags::SERIES_DESCRIPTION => Vr::LO,
+        tags::PERFORMING_PHYSICIAN_NAME => Vr::PN,
+        tags::OPERATORS_NAME => Vr::PN,
+        tags::REFERENCED_SOP_SEQUENCE => Vr::SQ,
+        tags::REFERENCED_SOP_CLASS_UID => Vr::UI,
+        tags::REFERENCED_SOP_INSTANCE_UID => Vr::UI,
+        tags::STUDY_INSTANCE_UID => Vr::UI,
+        tags::SERIES_INSTANCE_UID => Vr::UI,
+        tags::STUDY_ID => Vr::SH,
+        tags::SERIES_NUMBER => Vr::IS,
+        tags::ACQUISITION_NUMBER => Vr::IS,
+        tags::INSTANCE_NUMBER => Vr::IS,
+        tags::IMAGE_POSITION_PATIENT => Vr::DS,
+        tags::IMAGE_ORIENTATION_PATIENT => Vr::DS,
+        tags::FRAME_OF_REFERENCE_UID => Vr::UI,
+        tags::SLICE_LOCATION => Vr::DS,
+        tags::NUMBER_OF_PATIENT_RELATED_STUDIES => Vr::IS,
+        tags::NUMBER_OF_PATIENT_RELATED_SERIES => Vr::IS,
+        tags::NUMBER_OF_PATIENT_RELATED_INSTANCES => Vr::IS,
+        tags::NUMBER_OF_STUDY_RELATED_SERIES => Vr::IS,
+        tags::NUMBER_OF_STUDY_RELATED_INSTANCES => Vr::IS,
+        tags::NUMBER_OF_SERIES_RELATED_INSTANCES => Vr::IS,
+        tags::NUMBER_OF_FRAMES => Vr::IS,
+
+        // Image Pixel / VOI
+        tags::SAMPLES_PER_PIXEL => Vr::US,
+        tags::PHOTOMETRIC_INTERPRETATION => Vr::CS,
+        tags::ROWS => Vr::US,
+        tags::COLUMNS => Vr::US,
+        tags::BITS_ALLOCATED => Vr::US,
+        tags::BITS_STORED => Vr::US,
+        tags::HIGH_BIT => Vr::US,
+        tags::PIXEL_REPRESENTATION => Vr::US,
+        tags::PLANAR_CONFIGURATION => Vr::US,
+        tags::LOSSY_IMAGE_COMPRESSION => Vr::CS,
+        tags::PIXEL_DATA => Vr::OW,
+        tags::WINDOW_CENTER => Vr::DS,
+        tags::WINDOW_WIDTH => Vr::DS,
+        tags::RESCALE_INTERCEPT => Vr::DS,
+        tags::RESCALE_SLOPE => Vr::DS,
+        tags::RED_PALETTE_COLOR_LUT_DESCRIPTOR => Vr::US,
+        tags::GREEN_PALETTE_COLOR_LUT_DESCRIPTOR => Vr::US,
+        tags::BLUE_PALETTE_COLOR_LUT_DESCRIPTOR => Vr::US,
+        tags::RED_PALETTE_COLOR_LUT_DATA => Vr::OW,
+        tags::GREEN_PALETTE_COLOR_LUT_DATA => Vr::OW,
+        tags::BLUE_PALETTE_COLOR_LUT_DATA => Vr::OW,
+
+        // Overlay
+        tags::OVERLAY_ROWS => Vr::US,
+        tags::OVERLAY_COLUMNS => Vr::US,
+        tags::OVERLAY_ORIGIN => Vr::SS,
+        tags::OVERLAY_DATA => Vr::OW,
+
+        // DIMSE command set
+        tags::COMMAND_GROUP_LENGTH => Vr::UL,
+        tags::AFFECTED_SOP_CLASS_UID => Vr::UI,
+        tags::REQUESTED_SOP_CLASS_UID => Vr::UI,
+        tags::COMMAND_FIELD => Vr::US,
+        tags::MESSAGE_ID => Vr::US,
+        tags::MESSAGE_ID_BEING_RESPONDED_TO => Vr::US,
+        tags::MOVE_DESTINATION => Vr::AE,
+        tags::PRIORITY => Vr::US,
+        tags::COMMAND_DATA_SET_TYPE => Vr::US,
+        tags::STATUS => Vr::US,
+        tags::AFFECTED_SOP_INSTANCE_UID => Vr::UI,
+        tags::REQUESTED_SOP_INSTANCE_UID => Vr::UI,
+        tags::NUMBER_OF_REMAINING_SUB_OPERATIONS => Vr::US,
+        tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS => Vr::US,
+        tags::NUMBER_OF_FAILED_SUB_OPERATIONS => Vr::US,
+        tags::NUMBER_OF_WARNING_SUB_OPERATIONS => Vr::US,
+
+        _ => return None,
+    };
+
+    Some(vr)
+}
+
 /// Well-known DICOM tag constants.
 ///
 /// Ported from DCMTK's `dcdeftag.h`. Constants use SCREAMING_SNAKE_CASE
@@ -270,6 +393,26 @@ mod tests {
     fn file_meta_detection() {
         assert!(tags::TRANSFER_SYNTAX_UID.is_file_meta());
         assert!(!tags::PATIENT_NAME.is_file_meta());
+    }
+
+    #[test]
+    fn vr_lookup_resolves_query_tags() {
+        assert_eq!(vr_for_tag(tags::QUERY_RETRIEVE_LEVEL), Some(Vr::CS));
+        assert_eq!(vr_for_tag(tags::MODALITIES_IN_STUDY), Some(Vr::CS));
+        assert_eq!(vr_for_tag(tags::ISSUER_OF_PATIENT_ID), Some(Vr::LO));
+        assert_eq!(
+            vr_for_tag(tags::NUMBER_OF_STUDY_RELATED_SERIES),
+            Some(Vr::IS)
+        );
+        assert_eq!(
+            vr_for_tag(tags::NUMBER_OF_STUDY_RELATED_INSTANCES),
+            Some(Vr::IS)
+        );
+    }
+
+    #[test]
+    fn vr_lookup_returns_none_for_unknown_tags() {
+        assert_eq!(vr_for_tag(Tag::new(0x9999, 0x9999)), None);
     }
 
     #[test]

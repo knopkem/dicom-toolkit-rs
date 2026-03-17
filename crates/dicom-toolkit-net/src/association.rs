@@ -51,7 +51,7 @@ pub struct Association {
     pub calling_ae: String,
     /// Negotiated presentation contexts.
     pub presentation_contexts: Vec<PresentationContextAc>,
-    /// Maximum PDU length negotiated with the peer.
+    /// Maximum PDU length the peer advertised for inbound PDUs we send.
     pub max_pdu_length: u32,
     /// Remote socket address.
     pub peer_addr: SocketAddr,
@@ -225,7 +225,7 @@ impl Association {
             called_ae: rq.called_ae_title,
             calling_ae: rq.calling_ae_title,
             presentation_contexts: accepted_pcs,
-            max_pdu_length: config.max_pdu_length,
+            max_pdu_length: rq.max_pdu_length,
             peer_addr,
             pdv_queue: std::collections::VecDeque::new(),
         })
@@ -246,11 +246,7 @@ impl Association {
     ) -> DcmResult<()> {
         self.ensure_established()?;
 
-        // PDU overhead: 6-byte PDU header + 4-byte PDV item-length + 2-byte PDV header
-        const PDU_OVERHEAD: usize = 12;
-        let max_data = (self.max_pdu_length as usize)
-            .saturating_sub(PDU_OVERHEAD)
-            .max(1); // never divide into 0-byte fragments
+        let max_data = max_pdv_data_length(self.max_pdu_length, data.len());
 
         let send_empty = data.is_empty();
         let chunks: Vec<&[u8]> = if send_empty {
@@ -294,39 +290,15 @@ impl Association {
     pub async fn recv_pdata(&mut self) -> DcmResult<(u8, bool, bool, Vec<u8>)> {
         self.ensure_established()?;
 
-        // Return a buffered PDV from a previous P-DATA-TF if available.
+        self.fill_pdv_queue().await?;
+
         if let Some(pdv) = self.pdv_queue.pop_front() {
             return Ok((pdv.context_id, pdv.is_command(), pdv.is_last(), pdv.data));
         }
 
-        loop {
-            let pdu = pdu::read_pdu(&mut self.stream).await?;
-
-            match pdu {
-                Pdu::PDataTf(pd) => {
-                    let mut iter = pd.pdvs.into_iter();
-                    if let Some(pdv) = iter.next() {
-                        self.pdv_queue.extend(iter);
-                        return Ok((pdv.context_id, pdv.is_command(), pdv.is_last(), pdv.data));
-                    }
-                    // empty P-DATA-TF — keep waiting
-                }
-                Pdu::AAbort(abort) => {
-                    self.state = AssociationState::Closed;
-                    return Err(DcmError::AssociationAborted {
-                        abort_source: abort.source.to_string(),
-                        reason: abort.reason.to_string(),
-                    });
-                }
-                Pdu::ReleaseRq => {
-                    // Respond with A-RELEASE-RP then close
-                    let _ = self.stream.write_all(&pdu::encode_release_rp()).await;
-                    self.state = AssociationState::Closed;
-                    return Err(DcmError::Other("association released by peer".into()));
-                }
-                _ => {} // ignore other unexpected PDUs
-            }
-        }
+        Err(DcmError::Other(
+            "expected a P-DATA-TF PDU but none was available".into(),
+        ))
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -433,6 +405,44 @@ impl Association {
         Ok(all_data)
     }
 
+    /// Collect data PDVs if present, but tolerate peers that immediately send the
+    /// next DIMSE command instead of a dataset PDV.
+    ///
+    /// Returns:
+    /// - `Ok(Some(bytes))` if one or more data PDVs were received
+    /// - `Ok(None)` if the next queued PDV was another DIMSE command
+    pub async fn recv_optional_dimse_data(&mut self) -> DcmResult<Option<Vec<u8>>> {
+        self.ensure_established()?;
+        let mut all_data = Vec::new();
+        let mut saw_data_pdv = false;
+
+        loop {
+            self.fill_pdv_queue().await?;
+
+            if self.pdv_queue.front().is_some_and(Pdv::is_command) {
+                return if saw_data_pdv {
+                    Ok(Some(all_data))
+                } else {
+                    Ok(None)
+                };
+            }
+
+            let Some(pdv) = self.pdv_queue.pop_front() else {
+                return if saw_data_pdv {
+                    Ok(Some(all_data))
+                } else {
+                    Ok(None)
+                };
+            };
+
+            saw_data_pdv = true;
+            all_data.extend_from_slice(&pdv.data);
+            if pdv.is_last() {
+                return Ok(Some(all_data));
+            }
+        }
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn ensure_established(&self) -> DcmResult<()> {
@@ -442,6 +452,40 @@ impl Association {
             ));
         }
         Ok(())
+    }
+
+    async fn fill_pdv_queue(&mut self) -> DcmResult<()> {
+        self.ensure_established()?;
+        if !self.pdv_queue.is_empty() {
+            return Ok(());
+        }
+
+        loop {
+            let pdu = pdu::read_pdu(&mut self.stream).await?;
+
+            match pdu {
+                Pdu::PDataTf(pd) => {
+                    if pd.pdvs.is_empty() {
+                        continue;
+                    }
+                    self.pdv_queue.extend(pd.pdvs);
+                    return Ok(());
+                }
+                Pdu::AAbort(abort) => {
+                    self.state = AssociationState::Closed;
+                    return Err(DcmError::AssociationAborted {
+                        abort_source: abort.source.to_string(),
+                        reason: abort.reason.to_string(),
+                    });
+                }
+                Pdu::ReleaseRq => {
+                    let _ = self.stream.write_all(&pdu::encode_release_rp()).await;
+                    self.state = AssociationState::Closed;
+                    return Err(DcmError::Other("association released by peer".into()));
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -520,6 +564,18 @@ fn choose_preferred_ts_refs(offered: &[&String], preferred: &[String]) -> Option
     })
 }
 
+fn max_pdv_data_length(max_pdu_length: u32, data_len: usize) -> usize {
+    const PDU_OVERHEAD: usize = 12;
+
+    if max_pdu_length == 0 {
+        return data_len.max(1);
+    }
+
+    (max_pdu_length as usize)
+        .saturating_sub(PDU_OVERHEAD)
+        .max(1)
+}
+
 fn choose_default_uncompressed_ts(offered: &[&String]) -> Option<String> {
     for preferred in &[TS_EXPLICIT_VR_LE, TS_IMPLICIT_VR_LE] {
         if let Some(ts) = offered
@@ -537,6 +593,14 @@ fn choose_default_uncompressed_ts(offered: &[&String]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dimse;
+    use crate::pdu::{self, AssociateRq, Pdu, Pdv, PresentationContextRqItem};
+    use dicom_toolkit_core::uid::sop_class;
+    use tokio::{
+        io::AsyncWriteExt,
+        net::{TcpListener, TcpStream},
+        sync::oneshot,
+    };
 
     #[test]
     fn negotiate_pc_accept_all() {
@@ -699,5 +763,248 @@ mod tests {
         assoc.release().await.unwrap();
 
         scp_handle.await.unwrap();
+    }
+
+    fn find_context_item() -> PresentationContextRqItem {
+        PresentationContextRqItem {
+            id: 1,
+            abstract_syntax: sop_class::PATIENT_ROOT_QR_FIND.to_string(),
+            transfer_syntaxes: vec![TS_EXPLICIT_VR_LE.to_string()],
+        }
+    }
+
+    fn associate_rq(max_pdu_length: u32) -> AssociateRq {
+        AssociateRq {
+            called_ae_title: "SCP".into(),
+            calling_ae_title: "SCU".into(),
+            application_context: APP_CONTEXT_UID.to_string(),
+            presentation_contexts: vec![find_context_item()],
+            max_pdu_length,
+            implementation_class_uid: "1.2.826.0.1.3680043.8.498".into(),
+            implementation_version_name: "TEST".into(),
+        }
+    }
+
+    fn find_command(command_data_set_type: u16) -> DataSet {
+        use dicom_toolkit_dict::tags;
+
+        let mut cmd = DataSet::new();
+        cmd.set_uid(
+            tags::AFFECTED_SOP_CLASS_UID,
+            sop_class::PATIENT_ROOT_QR_FIND,
+        );
+        cmd.set_u16(tags::COMMAND_FIELD, 0x0020);
+        cmd.set_u16(tags::MESSAGE_ID, 1);
+        cmd.set_u16(tags::PRIORITY, 0);
+        cmd.set_u16(tags::COMMAND_DATA_SET_TYPE, command_data_set_type);
+        cmd
+    }
+
+    fn echo_command() -> DataSet {
+        use dicom_toolkit_dict::tags;
+
+        let mut cmd = DataSet::new();
+        cmd.set_uid(tags::AFFECTED_SOP_CLASS_UID, "1.2.840.10008.1.1");
+        cmd.set_u16(tags::COMMAND_FIELD, 0x0030);
+        cmd.set_u16(tags::MESSAGE_ID, 2);
+        cmd.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101);
+        cmd
+    }
+
+    async fn connect_pair() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let client = tokio::spawn(async move { TcpStream::connect(addr).await.expect("connect") });
+        let (server, _) = listener.accept().await.expect("accept");
+        let client = client.await.expect("join client task");
+        (server, client)
+    }
+
+    #[test]
+    fn max_pdv_data_length_honors_peer_limit() {
+        assert_eq!(max_pdv_data_length(0, 128), 128);
+        assert_eq!(max_pdv_data_length(16_384, 32_768), 16_372);
+        assert_eq!(max_pdv_data_length(8, 64), 1);
+    }
+
+    #[tokio::test]
+    async fn accept_uses_requestor_max_pdu_length_for_outbound_limit() {
+        let (server_stream, mut client_stream) = connect_pair().await;
+        let (done_tx, done_rx) = oneshot::channel();
+
+        tokio::spawn(async move {
+            let assoc = Association::accept(server_stream, &AssociationConfig::default())
+                .await
+                .expect("accept association");
+            done_tx
+                .send(assoc.max_pdu_length)
+                .expect("send negotiated max pdu");
+        });
+
+        client_stream
+            .write_all(&pdu::encode_associate_rq(&associate_rq(16_384)))
+            .await
+            .expect("send associate-rq");
+        match pdu::read_pdu(&mut client_stream)
+            .await
+            .expect("read associate-ac")
+        {
+            Pdu::AssociateAc(_) => {}
+            other => panic!("expected AssociateAc, got {other:?}"),
+        }
+
+        assert_eq!(done_rx.await.expect("receive max pdu"), 16_384);
+    }
+
+    #[tokio::test]
+    async fn recv_optional_dimse_data_keeps_next_command_queued() {
+        let (server_stream, mut client_stream) = connect_pair().await;
+
+        let (done_tx, done_rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let mut assoc = Association::accept(server_stream, &AssociationConfig::default())
+                .await
+                .expect("accept association");
+
+            let (ctx_id, find_cmd) = assoc.recv_dimse_command().await.expect("receive command");
+            assert_eq!(ctx_id, 1);
+            assert_eq!(
+                find_cmd.get_u16(dicom_toolkit_dict::tags::COMMAND_FIELD),
+                Some(0x0020)
+            );
+
+            let query_bytes = assoc
+                .recv_optional_dimse_data()
+                .await
+                .expect("receive optional query data");
+            assert!(query_bytes.is_none());
+
+            let (_, next_cmd) = assoc
+                .recv_dimse_command()
+                .await
+                .expect("receive queued follow-up command");
+            done_tx
+                .send(next_cmd.get_u16(dicom_toolkit_dict::tags::COMMAND_FIELD))
+                .expect("send command field");
+        });
+
+        client_stream
+            .write_all(&pdu::encode_associate_rq(&associate_rq(16_384)))
+            .await
+            .expect("send associate-rq");
+        match pdu::read_pdu(&mut client_stream)
+            .await
+            .expect("read associate-ac")
+        {
+            Pdu::AssociateAc(_) => {}
+            other => panic!("expected AssociateAc, got {other:?}"),
+        }
+
+        let pdus = pdu::encode_p_data_tf(&[
+            Pdv {
+                context_id: 1,
+                msg_control: 0x03,
+                data: dimse::encode_command_dataset(&find_command(0x0000)),
+            },
+            Pdv {
+                context_id: 1,
+                msg_control: 0x03,
+                data: dimse::encode_command_dataset(&echo_command()),
+            },
+        ]);
+        client_stream
+            .write_all(&pdus)
+            .await
+            .expect("send back-to-back commands");
+
+        assert_eq!(done_rx.await.expect("receive next command"), Some(0x0030));
+    }
+
+    #[tokio::test]
+    async fn recv_optional_dimse_data_tolerates_empty_data_pdv_before_next_command() {
+        let (server_stream, mut client_stream) = connect_pair().await;
+
+        let (done_tx, done_rx) = oneshot::channel();
+        tokio::spawn(async move {
+            let mut assoc = Association::accept(server_stream, &AssociationConfig::default())
+                .await
+                .expect("accept association");
+
+            let (_, store_cmd) = assoc.recv_dimse_command().await.expect("receive command");
+            assert_eq!(
+                store_cmd.get_u16(dicom_toolkit_dict::tags::COMMAND_FIELD),
+                Some(0x0001)
+            );
+
+            let data = assoc
+                .recv_optional_dimse_data()
+                .await
+                .expect("receive optional store data");
+            let (_, next_cmd) = assoc
+                .recv_dimse_command()
+                .await
+                .expect("receive queued follow-up command");
+
+            done_tx
+                .send((
+                    data,
+                    next_cmd.get_u16(dicom_toolkit_dict::tags::COMMAND_FIELD),
+                ))
+                .expect("send result");
+        });
+
+        client_stream
+            .write_all(&pdu::encode_associate_rq(&associate_rq(16_384)))
+            .await
+            .expect("send associate-rq");
+        match pdu::read_pdu(&mut client_stream)
+            .await
+            .expect("read associate-ac")
+        {
+            Pdu::AssociateAc(_) => {}
+            other => panic!("expected AssociateAc, got {other:?}"),
+        }
+
+        let mut store_cmd = DataSet::new();
+        store_cmd.set_uid(
+            dicom_toolkit_dict::tags::AFFECTED_SOP_CLASS_UID,
+            sop_class::CT_IMAGE_STORAGE,
+        );
+        store_cmd.set_u16(dicom_toolkit_dict::tags::COMMAND_FIELD, 0x0001);
+        store_cmd.set_u16(dicom_toolkit_dict::tags::MESSAGE_ID, 1);
+        store_cmd.set_u16(dicom_toolkit_dict::tags::PRIORITY, 0);
+        store_cmd.set_u16(dicom_toolkit_dict::tags::COMMAND_DATA_SET_TYPE, 0x0000);
+        store_cmd.set_uid(
+            dicom_toolkit_dict::tags::AFFECTED_SOP_INSTANCE_UID,
+            "1.2.3.4.5",
+        );
+
+        let pdus = pdu::encode_p_data_tf(&[
+            Pdv {
+                context_id: 1,
+                msg_control: 0x03,
+                data: dimse::encode_command_dataset(&store_cmd),
+            },
+            Pdv {
+                context_id: 1,
+                msg_control: 0x00,
+                data: Vec::new(),
+            },
+            Pdv {
+                context_id: 1,
+                msg_control: 0x03,
+                data: dimse::encode_command_dataset(&echo_command()),
+            },
+        ]);
+        client_stream
+            .write_all(&pdus)
+            .await
+            .expect("send store command, empty data PDV, then next command");
+
+        let (data, next_command_field) = done_rx.await.expect("receive result");
+        assert_eq!(data, Some(Vec::new()));
+        assert_eq!(next_command_field, Some(0x0030));
     }
 }

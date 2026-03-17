@@ -6,6 +6,7 @@ use dicom_toolkit_dict::tags;
 
 use crate::association::Association;
 use crate::services::provider::{StoreEvent, StoreServiceProvider};
+use crate::services::recv_command_data_bytes;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ where
         .to_string();
     let msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
 
-    let data = assoc.recv_dimse_data().await?;
+    let data = recv_command_data_bytes(assoc, cmd).await?;
 
     // Decode dataset using the negotiated transfer syntax.
     let ts_uid = assoc

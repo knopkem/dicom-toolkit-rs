@@ -7,7 +7,7 @@ pub mod ts;
 pub mod uid_registry;
 pub mod vr;
 
-pub use tag::{tags, Tag};
+pub use tag::{tags, vr_for_tag, Tag};
 pub use ts::{transfer_syntaxes, TransferSyntax};
 pub use uid_registry::uid_name;
 pub use vr::Vr;
