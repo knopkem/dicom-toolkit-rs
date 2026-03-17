@@ -108,10 +108,21 @@ pub fn encode_string(s: &str, term: &str) -> DcmResult<Vec<u8>> {
 pub struct DicomCharsetDecoder {
     /// Default encoding (first term, or ASCII if empty).
     default_encoding: &'static Encoding,
+    /// Default defined term (used to restore ISO 2022 state).
+    default_term: String,
+    /// Scan mode for the default term.
+    default_scan_mode: ScanMode,
     /// Map from ISO 2022 defined term → encoding, for code extension switching.
     extensions: Vec<(String, &'static Encoding)>,
     /// True if we have multiple charsets (ISO 2022 code extensions).
     has_extensions: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScanMode {
+    SingleByte,
+    FixedWidth(usize),
+    HighBitLead(usize),
 }
 
 /// ISO 2022 escape sequence to DICOM defined term mapping.
@@ -166,7 +177,9 @@ impl DicomCharsetDecoder {
     /// The value may contain multiple backslash-separated terms.
     pub fn new(specific_charset: &str) -> DcmResult<Self> {
         let terms: Vec<&str> = specific_charset.split('\\').collect();
-        let default_encoding = encoding_for_term(terms.first().copied().unwrap_or(""))?;
+        let default_term = terms.first().copied().unwrap_or("").trim().to_string();
+        let default_encoding = encoding_for_term(&default_term)?;
+        let default_scan_mode = scan_mode_for_term(&default_term);
 
         let mut extensions = Vec::new();
         let mut has_extensions = false;
@@ -192,6 +205,8 @@ impl DicomCharsetDecoder {
 
         Ok(Self {
             default_encoding,
+            default_term,
+            default_scan_mode,
             extensions,
             has_extensions,
         })
@@ -201,6 +216,8 @@ impl DicomCharsetDecoder {
     pub fn single(encoding: &'static Encoding) -> Self {
         Self {
             default_encoding: encoding,
+            default_term: String::new(),
+            default_scan_mode: ScanMode::SingleByte,
             extensions: Vec::new(),
             has_extensions: false,
         }
@@ -210,6 +227,8 @@ impl DicomCharsetDecoder {
     pub fn default_ascii() -> Self {
         Self {
             default_encoding: encoding_rs::WINDOWS_1252,
+            default_term: String::new(),
+            default_scan_mode: ScanMode::SingleByte,
             extensions: Vec::new(),
             has_extensions: false,
         }
@@ -277,7 +296,9 @@ impl DicomCharsetDecoder {
 
     fn decode_with_extensions(&self, bytes: &[u8]) -> DcmResult<String> {
         let mut result = String::new();
+        let mut current_term = self.default_term.as_str();
         let mut current_encoding = self.default_encoding;
+        let mut current_scan_mode = self.default_scan_mode;
         let mut segment_start = 0;
         let mut pos = 0;
 
@@ -289,7 +310,11 @@ impl DicomCharsetDecoder {
                 // Decode segment before the ESC
                 if pos > segment_start {
                     let segment = &bytes[segment_start..pos];
-                    result.push_str(&self.decode_segment(segment, current_encoding)?);
+                    result.push_str(&self.decode_segment(
+                        segment,
+                        current_term,
+                        current_encoding,
+                    )?);
                 }
 
                 // Parse escape sequence
@@ -299,7 +324,9 @@ impl DicomCharsetDecoder {
                 if esc_len > 0 && remaining.len() >= esc_len {
                     if let Some(term) = escape_to_term(&remaining[..esc_len]) {
                         // Look up the encoding for this term
+                        current_term = term;
                         current_encoding = self.find_encoding(term);
+                        current_scan_mode = scan_mode_for_term(term);
                     }
                     pos += 1 + esc_len; // skip ESC + sequence bytes
                 } else {
@@ -316,32 +343,58 @@ impl DicomCharsetDecoder {
                 // Decode segment before delimiter
                 if pos > segment_start {
                     let segment = &bytes[segment_start..pos];
-                    result.push_str(&self.decode_segment(segment, current_encoding)?);
+                    result.push_str(&self.decode_segment(
+                        segment,
+                        current_term,
+                        current_encoding,
+                    )?);
                 }
                 result.push(b as char);
+                current_term = self.default_term.as_str();
                 current_encoding = self.default_encoding;
+                current_scan_mode = self.default_scan_mode;
                 pos += 1;
                 segment_start = pos;
                 continue;
             }
 
+            if let Some(skip) = current_scan_mode.skip_bytes(b, pos, bytes.len()) {
+                pos += skip;
+            }
             pos += 1;
         }
 
         // Decode final segment
         if segment_start < bytes.len() {
             let segment = &bytes[segment_start..];
-            result.push_str(&self.decode_segment(segment, current_encoding)?);
+            result.push_str(&self.decode_segment(segment, current_term, current_encoding)?);
         }
 
         Ok(result)
     }
 
-    fn decode_segment(&self, bytes: &[u8], encoding: &'static Encoding) -> DcmResult<String> {
+    fn decode_segment(
+        &self,
+        bytes: &[u8],
+        term: &str,
+        encoding: &'static Encoding,
+    ) -> DcmResult<String> {
         if bytes.is_empty() {
             return Ok(String::new());
         }
-        let (decoded, _, _) = encoding.decode(bytes);
+        let wrapped;
+        let bytes = if let Some(segment) = wrap_iso2022_segment(term, bytes) {
+            wrapped = segment;
+            wrapped.as_slice()
+        } else {
+            bytes
+        };
+        let (decoded, _, had_errors) = encoding.decode(bytes);
+        if had_errors && matches!(term, "ISO 2022 IR 87" | "ISO 2022 IR 159") {
+            return Err(DcmError::CharsetError {
+                reason: format!("decoding error using charset '{term}'"),
+            });
+        }
         Ok(decoded.into_owned())
     }
 
@@ -354,6 +407,43 @@ impl DicomCharsetDecoder {
         // Fallback: try the global mapping
         encoding_for_term(term).unwrap_or(self.default_encoding)
     }
+}
+
+impl ScanMode {
+    fn skip_bytes(self, first_byte: u8, pos: usize, len: usize) -> Option<usize> {
+        match self {
+            ScanMode::SingleByte => None,
+            ScanMode::FixedWidth(width) if width > 1 && pos + width - 1 < len => Some(width - 1),
+            ScanMode::HighBitLead(width)
+                if width > 1 && (first_byte & 0x80) != 0 && pos + width - 1 < len =>
+            {
+                Some(width - 1)
+            }
+            _ => None,
+        }
+    }
+}
+
+fn scan_mode_for_term(term: &str) -> ScanMode {
+    match term {
+        "ISO 2022 IR 87" | "ISO 2022 IR 159" | "ISO 2022 IR 58" => ScanMode::FixedWidth(2),
+        "ISO 2022 IR 149" => ScanMode::HighBitLead(2),
+        _ => ScanMode::SingleByte,
+    }
+}
+
+fn wrap_iso2022_segment(term: &str, bytes: &[u8]) -> Option<Vec<u8>> {
+    let prefix = match term {
+        "ISO 2022 IR 87" => &[0x1B, 0x24, 0x42][..],
+        "ISO 2022 IR 159" => &[0x1B, 0x24, 0x28, 0x44][..],
+        _ => return None,
+    };
+
+    let mut wrapped = Vec::with_capacity(prefix.len() + bytes.len() + 3);
+    wrapped.extend_from_slice(prefix);
+    wrapped.extend_from_slice(bytes);
+    wrapped.extend_from_slice(&[0x1B, 0x28, 0x42]);
+    Some(wrapped)
 }
 
 #[cfg(test)]
@@ -468,12 +558,14 @@ mod tests {
     #[test]
     fn decoder_with_iso2022_japanese() {
         // Simulate: Latin text, then ESC to JIS X0208, then ESC back to ASCII.
-        // "Yamada^Tarou" with Kanji section
+        // "Yamada^日本"
         let decoder = DicomCharsetDecoder::new("\\ISO 2022 IR 87").unwrap();
-
-        // Just ASCII part — no escape needed
-        let result = decoder.decode(b"Yamada^Tarou").unwrap();
-        assert_eq!(result, "Yamada^Tarou");
+        let bytes = [
+            b'Y', b'a', b'm', b'a', b'd', b'a', b'^', 0x1B, 0x24, 0x42, 0x46, 0x7C, 0x4B, 0x5C,
+            0x1B, 0x28, 0x42,
+        ];
+        let result = decoder.decode(&bytes).unwrap();
+        assert_eq!(result, "Yamada^日本");
     }
 
     #[test]

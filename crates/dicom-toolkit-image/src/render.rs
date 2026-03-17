@@ -41,7 +41,7 @@ pub fn render_frame_u8(image: &DicomImage, options: &RenderedFrameOptions) -> Dc
 
     let mut image = image.clone();
     match (options.window_center, options.window_width) {
-        (Some(center), Some(width)) => image.set_window(center, width),
+        (Some(center), Some(width)) => image.set_window(center, width)?,
         (None, None) => {}
         _ => {
             return Err(DcmError::Other(
@@ -211,9 +211,23 @@ mod tests {
         let rendered = render_frame_u8(&image, &options).unwrap();
 
         let mut expected_image = image.clone();
-        expected_image.set_window(128.0, 64.0);
+        expected_image.set_window(128.0, 64.0).unwrap();
         let expected = expected_image.frame_u8(0).unwrap();
         assert_eq!(rendered, expected);
+    }
+
+    #[test]
+    fn render_frame_u8_rejects_invalid_window_width() {
+        let image = tiny_grayscale();
+        let options = RenderedFrameOptions {
+            frame: 0,
+            window_center: Some(128.0),
+            window_width: Some(0.0),
+            ..Default::default()
+        };
+
+        let err = render_frame_u8(&image, &options).unwrap_err();
+        assert!(err.to_string().contains("window width must be >= 1.0"));
     }
 
     #[test]

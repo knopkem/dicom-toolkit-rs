@@ -34,9 +34,9 @@ impl Uid {
     ///
     /// # Safety (logical)
     /// The caller must ensure the string is a valid DICOM UID.
-    pub const fn from_static(_s: &'static str) -> Self {
-        // Can't validate at const time, but used only for known constants.
-        Self(String::new()) // placeholder — see below
+    pub fn from_static(s: &'static str) -> Self {
+        debug_assert!(Self::validate(s).is_ok(), "invalid static UID: {s}");
+        Self(s.to_string())
     }
 
     /// Internal helper that creates a Uid from a known-valid string at runtime.
@@ -292,6 +292,12 @@ mod tests {
     #[test]
     fn invalid_uid_leading_zero() {
         assert!(Uid::new("1.02.3").is_err());
+    }
+
+    #[test]
+    fn from_static_preserves_value() {
+        let uid = Uid::from_static("1.2.840.10008.1.1");
+        assert_eq!(uid.as_str(), "1.2.840.10008.1.1");
     }
 
     #[test]

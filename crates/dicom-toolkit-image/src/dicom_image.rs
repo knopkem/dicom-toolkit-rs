@@ -231,9 +231,16 @@ impl DicomImage {
     // ── Window / level control ────────────────────────────────────────────────
 
     /// Set the display window center and width.
-    pub fn set_window(&mut self, center: f64, width: f64) {
+    ///
+    /// Matches DCMTK's `DiMonoImage::setWindow()` behavior: widths below `1.0`
+    /// are rejected as invalid.
+    pub fn set_window(&mut self, center: f64, width: f64) -> DcmResult<()> {
+        if width < 1.0 {
+            return Err(DcmError::Other("window width must be >= 1.0".into()));
+        }
         self.window_center = Some(center);
         self.window_width = Some(width);
+        Ok(())
     }
 
     /// Automatically compute a window from the pixel value range across **all**
@@ -512,7 +519,7 @@ mod tests {
         let mut ds = make_grayscale_8bit(1, 2, vec![0u8, 255]);
         ds.set_string(tags::PHOTOMETRIC_INTERPRETATION, Vr::CS, "MONOCHROME1");
         let mut img = DicomImage::from_dataset(&ds).unwrap();
-        img.set_window(127.5, 256.0);
+        img.set_window(127.5, 256.0).unwrap();
         let out = img.frame_u8(0).unwrap();
         // pixel 0 → 0 → after window: near 0 → after inversion: near 255
         // pixel 255 → 255 → after window: near 255 → after inversion: near 0
@@ -529,9 +536,18 @@ mod tests {
         let pixels: Vec<u8> = (0u8..=255).collect();
         let ds = make_grayscale_8bit(16, 16, pixels);
         let mut img = DicomImage::from_dataset(&ds).unwrap();
-        img.set_window(127.5, 256.0);
+        img.set_window(127.5, 256.0).unwrap();
         let norm = img.frame_normalized(0).unwrap();
         assert!(norm.iter().all(|&v| (0.0..=1.0).contains(&v)));
+    }
+
+    #[test]
+    fn set_window_rejects_invalid_width() {
+        let ds = make_grayscale_8bit(1, 1, vec![0u8]);
+        let mut img = DicomImage::from_dataset(&ds).unwrap();
+
+        let err = img.set_window(42.0, 0.0).unwrap_err();
+        assert!(err.to_string().contains("window width must be >= 1.0"));
     }
 
     #[test]
