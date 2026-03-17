@@ -89,137 +89,146 @@ pub const ITEM_DELIMITATION: Tag = Tag::new(0xFFFE, 0xE00D);
 pub const SEQUENCE_DELIMITATION: Tag = Tag::new(0xFFFE, 0xE0DD);
 
 /// An entry in the DICOM data dictionary.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeRestriction {
+    Unspecified,
+    Odd,
+    Even,
+}
+
+/// Sentinel used for dictionary entries with variable VM (`1-n`, `2-n`, ...).
+pub const VARIABLE_VM: u32 = u32::MAX;
+
+/// An entry in the DICOM data dictionary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DictEntry {
     pub tag: Tag,
+    pub upper_tag: Tag,
     pub vr: Vr,
+    pub raw_vr: &'static str,
     pub name: &'static str,
     pub keyword: &'static str,
     pub vm_min: u32,
     pub vm_max: u32,
+    pub standard_version: &'static str,
+    pub group_restriction: RangeRestriction,
+    pub element_restriction: RangeRestriction,
+    pub private_creator: Option<&'static str>,
 }
 
-/// Look up the VR for a tag in the built-in dictionary subset.
+impl DictEntry {
+    pub const fn is_repeating(&self) -> bool {
+        self.tag.group != self.upper_tag.group || self.tag.element != self.upper_tag.element
+    }
+
+    pub fn private_creator_matches(&self, private_creator: Option<&str>) -> bool {
+        match (self.private_creator, private_creator) {
+            (None, None) => true,
+            (Some(expected), Some(actual)) => expected == actual,
+            _ => false,
+        }
+    }
+
+    pub fn contains(&self, key: Tag, private_creator: Option<&str>) -> bool {
+        if self.group_restriction == RangeRestriction::Even && key.group % 2 != 0 {
+            return false;
+        }
+        if self.group_restriction == RangeRestriction::Odd && key.group % 2 == 0 {
+            return false;
+        }
+        if self.element_restriction == RangeRestriction::Even && key.element % 2 != 0 {
+            return false;
+        }
+        if self.element_restriction == RangeRestriction::Odd && key.element % 2 == 0 {
+            return false;
+        }
+        if !self.private_creator_matches(private_creator) {
+            return false;
+        }
+
+        let group_matches = (self.tag.group..=self.upper_tag.group).contains(&key.group);
+        let mut found =
+            group_matches && (self.tag.element..=self.upper_tag.element).contains(&key.element);
+
+        if !found && group_matches && private_creator.is_some() {
+            let low_element = key.element & 0x00FF;
+            found = (self.tag.element..=self.upper_tag.element).contains(&low_element);
+        }
+
+        found
+    }
+}
+
+#[path = "generated_dictionary.rs"]
+mod generated_dictionary;
+
+use generated_dictionary::{EXACT_ENTRIES, REPEATING_ENTRIES};
+
+fn exact_lower_bound(tag: Tag) -> usize {
+    let mut left = 0usize;
+    let mut right = EXACT_ENTRIES.len();
+    while left < right {
+        let mid = left + (right - left) / 2;
+        if EXACT_ENTRIES[mid].tag < tag {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+    left
+}
+
+fn exact_upper_bound(tag: Tag) -> usize {
+    let mut left = 0usize;
+    let mut right = EXACT_ENTRIES.len();
+    while left < right {
+        let mid = left + (right - left) / 2;
+        if EXACT_ENTRIES[mid].tag <= tag {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+    left
+}
+
+/// Look up a dictionary entry by tag.
+pub fn lookup_entry(tag: Tag) -> Option<&'static DictEntry> {
+    lookup_entry_with_private_creator(tag, None)
+}
+
+/// Look up a dictionary entry by tag and optional private creator identifier.
+pub fn lookup_entry_with_private_creator(
+    tag: Tag,
+    private_creator: Option<&str>,
+) -> Option<&'static DictEntry> {
+    let start = exact_lower_bound(tag);
+    let end = exact_upper_bound(tag);
+    if start < end {
+        if let Some(entry) = EXACT_ENTRIES[start..end]
+            .iter()
+            .find(|entry| entry.private_creator_matches(private_creator))
+        {
+            return Some(entry);
+        }
+    }
+
+    REPEATING_ENTRIES
+        .iter()
+        .find(|entry| entry.contains(tag, private_creator))
+}
+
+/// Look up the raw DCMTK VR code for a tag (`px`, `ox`, `xs`, ...).
+pub fn raw_vr_for_tag(tag: Tag) -> Option<&'static str> {
+    lookup_entry(tag).map(|entry| entry.raw_vr)
+}
+
+/// Look up the best-effort standard VR for a tag.
+///
+/// This follows DCMTK's `DcmVR::getValidEVR()` policy for non-standard
+/// dictionary VRs, e.g. `up -> UL`, `xs -> US`, `lt -> OW`, `ox/px -> OB`.
 pub fn vr_for_tag(tag: Tag) -> Option<Vr> {
-    let vr = match tag {
-        // File Meta Information (0002,xxxx)
-        tags::FILE_META_INFORMATION_GROUP_LENGTH => Vr::UL,
-        tags::FILE_META_INFORMATION_VERSION => Vr::OB,
-        tags::MEDIA_STORAGE_SOP_CLASS_UID => Vr::UI,
-        tags::MEDIA_STORAGE_SOP_INSTANCE_UID => Vr::UI,
-        tags::TRANSFER_SYNTAX_UID => Vr::UI,
-        tags::IMPLEMENTATION_CLASS_UID => Vr::UI,
-        tags::IMPLEMENTATION_VERSION_NAME => Vr::SH,
-        tags::SOURCE_APPLICATION_ENTITY_TITLE => Vr::AE,
-        tags::SENDING_APPLICATION_ENTITY_TITLE => Vr::AE,
-        tags::RECEIVING_APPLICATION_ENTITY_TITLE => Vr::AE,
-        tags::PRIVATE_INFORMATION_CREATOR_UID => Vr::UI,
-        tags::PRIVATE_INFORMATION => Vr::OB,
-
-        // General Study / Patient / Series
-        tags::PATIENT_NAME => Vr::PN,
-        tags::PATIENT_ID => Vr::LO,
-        tags::PATIENT_BIRTH_DATE => Vr::DA,
-        tags::ISSUER_OF_PATIENT_ID => Vr::LO,
-        tags::PATIENT_SEX => Vr::CS,
-        tags::PATIENT_AGE => Vr::AS,
-        tags::PATIENT_SIZE => Vr::DS,
-        tags::PATIENT_WEIGHT => Vr::DS,
-        tags::SPECIFIC_CHARACTER_SET => Vr::CS,
-        tags::IMAGE_TYPE => Vr::CS,
-        tags::SOP_CLASS_UID => Vr::UI,
-        tags::SOP_INSTANCE_UID => Vr::UI,
-        tags::STUDY_DATE => Vr::DA,
-        tags::SERIES_DATE => Vr::DA,
-        tags::ACQUISITION_DATE => Vr::DA,
-        tags::CONTENT_DATE => Vr::DA,
-        tags::STUDY_TIME => Vr::TM,
-        tags::SERIES_TIME => Vr::TM,
-        tags::ACQUISITION_TIME => Vr::TM,
-        tags::CONTENT_TIME => Vr::TM,
-        tags::ACCESSION_NUMBER => Vr::SH,
-        tags::QUERY_RETRIEVE_LEVEL => Vr::CS,
-        tags::MODALITY => Vr::CS,
-        tags::MODALITIES_IN_STUDY => Vr::CS,
-        tags::MANUFACTURER => Vr::LO,
-        tags::INSTITUTION_NAME => Vr::LO,
-        tags::REFERRING_PHYSICIAN_NAME => Vr::PN,
-        tags::STUDY_DESCRIPTION => Vr::LO,
-        tags::SERIES_DESCRIPTION => Vr::LO,
-        tags::PERFORMING_PHYSICIAN_NAME => Vr::PN,
-        tags::OPERATORS_NAME => Vr::PN,
-        tags::REFERENCED_SOP_SEQUENCE => Vr::SQ,
-        tags::REFERENCED_SOP_CLASS_UID => Vr::UI,
-        tags::REFERENCED_SOP_INSTANCE_UID => Vr::UI,
-        tags::STUDY_INSTANCE_UID => Vr::UI,
-        tags::SERIES_INSTANCE_UID => Vr::UI,
-        tags::STUDY_ID => Vr::SH,
-        tags::SERIES_NUMBER => Vr::IS,
-        tags::ACQUISITION_NUMBER => Vr::IS,
-        tags::INSTANCE_NUMBER => Vr::IS,
-        tags::IMAGE_POSITION_PATIENT => Vr::DS,
-        tags::IMAGE_ORIENTATION_PATIENT => Vr::DS,
-        tags::FRAME_OF_REFERENCE_UID => Vr::UI,
-        tags::SLICE_LOCATION => Vr::DS,
-        tags::NUMBER_OF_PATIENT_RELATED_STUDIES => Vr::IS,
-        tags::NUMBER_OF_PATIENT_RELATED_SERIES => Vr::IS,
-        tags::NUMBER_OF_PATIENT_RELATED_INSTANCES => Vr::IS,
-        tags::NUMBER_OF_STUDY_RELATED_SERIES => Vr::IS,
-        tags::NUMBER_OF_STUDY_RELATED_INSTANCES => Vr::IS,
-        tags::NUMBER_OF_SERIES_RELATED_INSTANCES => Vr::IS,
-        tags::NUMBER_OF_FRAMES => Vr::IS,
-
-        // Image Pixel / VOI
-        tags::SAMPLES_PER_PIXEL => Vr::US,
-        tags::PHOTOMETRIC_INTERPRETATION => Vr::CS,
-        tags::ROWS => Vr::US,
-        tags::COLUMNS => Vr::US,
-        tags::BITS_ALLOCATED => Vr::US,
-        tags::BITS_STORED => Vr::US,
-        tags::HIGH_BIT => Vr::US,
-        tags::PIXEL_REPRESENTATION => Vr::US,
-        tags::PLANAR_CONFIGURATION => Vr::US,
-        tags::LOSSY_IMAGE_COMPRESSION => Vr::CS,
-        tags::PIXEL_DATA => Vr::OW,
-        tags::WINDOW_CENTER => Vr::DS,
-        tags::WINDOW_WIDTH => Vr::DS,
-        tags::RESCALE_INTERCEPT => Vr::DS,
-        tags::RESCALE_SLOPE => Vr::DS,
-        tags::RED_PALETTE_COLOR_LUT_DESCRIPTOR => Vr::US,
-        tags::GREEN_PALETTE_COLOR_LUT_DESCRIPTOR => Vr::US,
-        tags::BLUE_PALETTE_COLOR_LUT_DESCRIPTOR => Vr::US,
-        tags::RED_PALETTE_COLOR_LUT_DATA => Vr::OW,
-        tags::GREEN_PALETTE_COLOR_LUT_DATA => Vr::OW,
-        tags::BLUE_PALETTE_COLOR_LUT_DATA => Vr::OW,
-
-        // Overlay
-        tags::OVERLAY_ROWS => Vr::US,
-        tags::OVERLAY_COLUMNS => Vr::US,
-        tags::OVERLAY_ORIGIN => Vr::SS,
-        tags::OVERLAY_DATA => Vr::OW,
-
-        // DIMSE command set
-        tags::COMMAND_GROUP_LENGTH => Vr::UL,
-        tags::AFFECTED_SOP_CLASS_UID => Vr::UI,
-        tags::REQUESTED_SOP_CLASS_UID => Vr::UI,
-        tags::COMMAND_FIELD => Vr::US,
-        tags::MESSAGE_ID => Vr::US,
-        tags::MESSAGE_ID_BEING_RESPONDED_TO => Vr::US,
-        tags::MOVE_DESTINATION => Vr::AE,
-        tags::PRIORITY => Vr::US,
-        tags::COMMAND_DATA_SET_TYPE => Vr::US,
-        tags::STATUS => Vr::US,
-        tags::AFFECTED_SOP_INSTANCE_UID => Vr::UI,
-        tags::REQUESTED_SOP_INSTANCE_UID => Vr::UI,
-        tags::NUMBER_OF_REMAINING_SUB_OPERATIONS => Vr::US,
-        tags::NUMBER_OF_COMPLETED_SUB_OPERATIONS => Vr::US,
-        tags::NUMBER_OF_FAILED_SUB_OPERATIONS => Vr::US,
-        tags::NUMBER_OF_WARNING_SUB_OPERATIONS => Vr::US,
-
-        _ => return None,
-    };
-
-    Some(vr)
+    lookup_entry(tag).map(|entry| entry.vr)
 }
 
 /// Well-known DICOM tag constants.
@@ -413,6 +422,33 @@ mod tests {
     #[test]
     fn vr_lookup_returns_none_for_unknown_tags() {
         assert_eq!(vr_for_tag(Tag::new(0x9999, 0x9999)), None);
+    }
+
+    #[test]
+    fn lookup_entry_matches_repeating_even_group_entries() {
+        let overlay_rows = lookup_entry(Tag::new(0x6002, 0x0010)).expect("overlay rows entry");
+        assert_eq!(overlay_rows.keyword, "OverlayRows");
+        assert!(overlay_rows.is_repeating());
+        assert_eq!(overlay_rows.group_restriction, RangeRestriction::Even);
+        assert!(overlay_rows.contains(Tag::new(0x6002, 0x0010), None));
+        assert!(!overlay_rows.contains(Tag::new(0x6001, 0x0010), None));
+
+        let private_creator =
+            lookup_entry(Tag::new(0x6001, 0x0010)).expect("generic private creator entry");
+        assert_eq!(private_creator.keyword, "PrivateCreator");
+    }
+
+    #[test]
+    fn lookup_entry_exposes_dcmtk_raw_vr_information() {
+        let pixel_data = lookup_entry(tags::PIXEL_DATA).expect("pixel data entry");
+        assert_eq!(pixel_data.raw_vr, "px");
+        assert_eq!(pixel_data.vr, Vr::OB);
+
+        let directory_offset =
+            lookup_entry(Tag::new(0x0004, 0x1200)).expect("directory offset entry");
+        assert_eq!(directory_offset.raw_vr, "up");
+        assert_eq!(directory_offset.vr, Vr::UL);
+        assert_eq!(raw_vr_for_tag(tags::PIXEL_DATA), Some("px"));
     }
 
     #[test]
