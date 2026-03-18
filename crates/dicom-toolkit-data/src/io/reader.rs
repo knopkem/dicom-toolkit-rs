@@ -52,6 +52,12 @@ impl<R: Read> DicomReader<R> {
 // ── Internal parse entry point ────────────────────────────────────────────────
 
 pub(crate) fn parse_file(data: &[u8]) -> DcmResult<FileFormat> {
+    if payload_starts_with_file_meta(data) {
+        if let Ok(file) = parse_part10_payload(data, 0) {
+            return Ok(file);
+        }
+    }
+
     // Short files without preamble — try raw implicit VR LE
     if data.len() < 132 {
         let mut cursor = DicomCursor::new(data);
@@ -70,8 +76,16 @@ pub(crate) fn parse_file(data: &[u8]) -> DcmResult<FileFormat> {
         return Ok(FileFormat::new(meta, ds));
     }
 
+    parse_part10_payload(data, 132)
+}
+
+fn payload_starts_with_file_meta(data: &[u8]) -> bool {
+    data.len() >= 4 && u16::from_le_bytes([data[0], data[1]]) == 0x0002
+}
+
+fn parse_part10_payload(data: &[u8], meta_offset: usize) -> DcmResult<FileFormat> {
     let mut cursor = DicomCursor::new(data);
-    cursor.pos = 132; // skip 128-byte preamble + "DICM"
+    cursor.pos = meta_offset;
 
     // Read File Meta Information (always explicit VR LE)
     let meta_ds = cursor.read_meta()?;
@@ -720,6 +734,9 @@ fn decode_ascii_string(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::element::Element;
+    use crate::file_format::FileFormat;
+    use crate::io::writer::DicomWriter;
     use crate::value::Value;
     use dicom_toolkit_dict::{tags, Tag, Vr};
 
@@ -806,6 +823,23 @@ mod tests {
             Value::Strings(ss) => assert_eq!(ss, &["Müller"]),
             other => panic!("unexpected: {:?}", other),
         }
+    }
+
+    #[test]
+    fn read_file_recovers_file_meta_without_preamble() {
+        let mut ds = DataSet::new();
+        ds.insert(Element::u16(tags::ROWS, 64));
+        ds.insert(Element::u16(tags::COLUMNS, 32));
+
+        let ff = FileFormat::from_dataset("1.2.840.10008.5.1.4.1.1.2", "1.2.3.4.5", ds);
+        let mut bytes = Vec::new();
+        DicomWriter::new(&mut bytes).write_file(&ff).unwrap();
+
+        let without_preamble = &bytes[132..];
+        let parsed = DicomReader::new(without_preamble).read_file().unwrap();
+        assert_eq!(parsed.meta.transfer_syntax_uid, "1.2.840.10008.1.2.1");
+        assert_eq!(parsed.dataset.get_u16(tags::ROWS), Some(64));
+        assert_eq!(parsed.dataset.get_u16(tags::COLUMNS), Some(32));
     }
 
     #[test]
