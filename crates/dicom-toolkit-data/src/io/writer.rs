@@ -552,6 +552,7 @@ fn format_ds(v: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::meta_info::FileMetaInformation;
     use crate::value::{PixelData, Value};
     use dicom_toolkit_dict::{tags, Tag, Vr};
 
@@ -647,5 +648,19 @@ mod tests {
 
         let err = element_value_bytes(&elem, "1.2.840.10008.1.2.1").unwrap_err();
         assert!(err.to_string().contains("encapsulated Pixel Data"));
+    }
+
+    #[test]
+    fn encode_meta_writes_group_length_once_at_start() {
+        let meta = FileMetaInformation::new(
+            "1.2.840.10008.5.1.4.1.1.2",
+            "1.2.3.4.5",
+            "1.2.840.10008.1.2.1",
+        );
+
+        let bytes = encode_meta(&meta).unwrap();
+
+        assert_eq!(&bytes[0..4], &[0x02, 0x00, 0x00, 0x00]);
+        assert_eq!(&bytes[12..16], &[0x02, 0x00, 0x01, 0x00]);
     }
 }

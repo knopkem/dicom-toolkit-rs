@@ -355,6 +355,75 @@ fn parse_json_tag(key: &str) -> DcmResult<Tag> {
     Ok(Tag::new(group, element))
 }
 
+fn json_scalar_token_string(tag: Tag, vr: Vr, value: &serde_json::Value) -> DcmResult<String> {
+    match value {
+        serde_json::Value::String(s) => Ok(s.clone()),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        serde_json::Value::Null => Ok(String::new()),
+        _ => Err(DcmError::Other(format!(
+            "invalid JSON value for tag {tag} VR {}: expected number, string or null",
+            vr.code()
+        ))),
+    }
+}
+
+fn json_value_tokens(tag: Tag, vr: Vr, values_arr: &[serde_json::Value]) -> DcmResult<Vec<String>> {
+    values_arr
+        .iter()
+        .map(|value| json_scalar_token_string(tag, vr, value))
+        .collect()
+}
+
+fn tokens_are_all_empty(tokens: &[String]) -> bool {
+    tokens.iter().all(|token| token.is_empty())
+}
+
+fn reject_mixed_empty_tokens(tag: Tag, vr: Vr, tokens: &[String]) -> DcmResult<()> {
+    let has_empty = tokens.iter().any(|token| token.is_empty());
+    let has_non_empty = tokens.iter().any(|token| !token.is_empty());
+
+    if has_empty && has_non_empty {
+        return Err(DcmError::Other(format!(
+            "tag {tag} VR {} cannot represent mixed empty and non-empty JSON values",
+            vr.code()
+        )));
+    }
+
+    Ok(())
+}
+
+fn parse_numeric_tokens<T>(
+    tag: Tag,
+    vr: Vr,
+    values_arr: &[serde_json::Value],
+) -> DcmResult<Option<Vec<T>>>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let tokens = json_value_tokens(tag, vr, values_arr)?;
+    if tokens_are_all_empty(&tokens) {
+        return Ok(None);
+    }
+
+    reject_mixed_empty_tokens(tag, vr, &tokens)?;
+
+    let values = tokens
+        .iter()
+        .map(|token| {
+            token.parse::<T>().map_err(|err| {
+                DcmError::Other(format!(
+                    "invalid {} value '{}' for tag {tag}: {err}",
+                    vr.code(),
+                    token
+                ))
+            })
+        })
+        .collect::<DcmResult<Vec<T>>>()?;
+
+    Ok(Some(values))
+}
+
 fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element> {
     let obj = val
         .as_object()
@@ -378,6 +447,15 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
             .decode(b64_str)
             .map_err(|e| DcmError::Other(format!("base64 decode error: {e}")))?;
         return Ok(Element::bytes(tag, vr, bytes));
+    }
+
+    if let Some(uri_val) = obj.get("BulkDataURI") {
+        let _uri = uri_val
+            .as_str()
+            .ok_or_else(|| DcmError::Other("BulkDataURI must be a string".into()))?;
+        return Err(DcmError::Other(format!(
+            "BulkDataURI deserialization is not supported for tag {tag}"
+        )));
     }
 
     let values_arr = match obj.get("Value") {
@@ -437,105 +515,103 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
         }
 
         Vr::DA => {
-            let dates: DcmResult<Vec<DicomDate>> = values_arr
-                .iter()
-                .filter_map(|v| v.as_str())
-                .map(DicomDate::parse)
-                .collect();
-            Value::Date(dates?)
+            let tokens = json_value_tokens(tag, vr, values_arr)?;
+            if tokens_are_all_empty(&tokens) {
+                Value::Empty
+            } else {
+                reject_mixed_empty_tokens(tag, vr, &tokens)?;
+                let dates: DcmResult<Vec<DicomDate>> =
+                    tokens.iter().map(|token| DicomDate::parse(token)).collect();
+                Value::Date(dates?)
+            }
         }
 
         Vr::TM => {
-            let times: DcmResult<Vec<DicomTime>> = values_arr
-                .iter()
-                .filter_map(|v| v.as_str())
-                .map(DicomTime::parse)
-                .collect();
-            Value::Time(times?)
+            let tokens = json_value_tokens(tag, vr, values_arr)?;
+            if tokens_are_all_empty(&tokens) {
+                Value::Empty
+            } else {
+                reject_mixed_empty_tokens(tag, vr, &tokens)?;
+                let times: DcmResult<Vec<DicomTime>> =
+                    tokens.iter().map(|token| DicomTime::parse(token)).collect();
+                Value::Time(times?)
+            }
         }
 
         Vr::DT => {
-            let dts: DcmResult<Vec<DicomDateTime>> = values_arr
-                .iter()
-                .filter_map(|v| v.as_str())
-                .map(DicomDateTime::parse)
-                .collect();
-            Value::DateTime(dts?)
+            let tokens = json_value_tokens(tag, vr, values_arr)?;
+            if tokens_are_all_empty(&tokens) {
+                Value::Empty
+            } else {
+                reject_mixed_empty_tokens(tag, vr, &tokens)?;
+                let dts: DcmResult<Vec<DicomDateTime>> = tokens
+                    .iter()
+                    .map(|token| DicomDateTime::parse(token))
+                    .collect();
+                Value::DateTime(dts?)
+            }
         }
 
         Vr::UI => {
-            let uid = values_arr
-                .first()
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            Value::Uid(uid)
+            let tokens = json_value_tokens(tag, vr, values_arr)?;
+            if tokens_are_all_empty(&tokens) {
+                Value::Empty
+            } else {
+                reject_mixed_empty_tokens(tag, vr, &tokens)?;
+                let uid = tokens.first().cloned().unwrap_or_default();
+                Value::Uid(uid)
+            }
         }
 
-        Vr::IS => {
-            let ints: Vec<i64> = values_arr.iter().filter_map(|v| v.as_i64()).collect();
-            Value::Ints(ints)
-        }
+        Vr::IS => match parse_numeric_tokens::<i64>(tag, vr, values_arr)? {
+            Some(ints) => Value::Ints(ints),
+            None => Value::Empty,
+        },
 
-        Vr::DS => {
-            let decimals: Vec<f64> = values_arr.iter().filter_map(|v| v.as_f64()).collect();
-            Value::Decimals(decimals)
-        }
+        Vr::DS => match parse_numeric_tokens::<f64>(tag, vr, values_arr)? {
+            Some(decimals) => Value::Decimals(decimals),
+            None => Value::Empty,
+        },
 
-        Vr::US | Vr::OW => {
-            let vals: Vec<u16> = values_arr
-                .iter()
-                .filter_map(|v| v.as_u64().map(|n| n as u16))
-                .collect();
-            Value::U16(vals)
-        }
+        Vr::US | Vr::OW => match parse_numeric_tokens::<u16>(tag, vr, values_arr)? {
+            Some(vals) => Value::U16(vals),
+            None => Value::Empty,
+        },
 
-        Vr::SS => {
-            let vals: Vec<i16> = values_arr
-                .iter()
-                .filter_map(|v| v.as_i64().map(|n| n as i16))
-                .collect();
-            Value::I16(vals)
-        }
+        Vr::SS => match parse_numeric_tokens::<i16>(tag, vr, values_arr)? {
+            Some(vals) => Value::I16(vals),
+            None => Value::Empty,
+        },
 
-        Vr::UL | Vr::OL => {
-            let vals: Vec<u32> = values_arr
-                .iter()
-                .filter_map(|v| v.as_u64().map(|n| n as u32))
-                .collect();
-            Value::U32(vals)
-        }
+        Vr::UL | Vr::OL => match parse_numeric_tokens::<u32>(tag, vr, values_arr)? {
+            Some(vals) => Value::U32(vals),
+            None => Value::Empty,
+        },
 
-        Vr::SL => {
-            let vals: Vec<i32> = values_arr
-                .iter()
-                .filter_map(|v| v.as_i64().map(|n| n as i32))
-                .collect();
-            Value::I32(vals)
-        }
+        Vr::SL => match parse_numeric_tokens::<i32>(tag, vr, values_arr)? {
+            Some(vals) => Value::I32(vals),
+            None => Value::Empty,
+        },
 
-        Vr::UV | Vr::OV => {
-            let vals: Vec<u64> = values_arr.iter().filter_map(|v| v.as_u64()).collect();
-            Value::U64(vals)
-        }
+        Vr::UV | Vr::OV => match parse_numeric_tokens::<u64>(tag, vr, values_arr)? {
+            Some(vals) => Value::U64(vals),
+            None => Value::Empty,
+        },
 
-        Vr::SV => {
-            let vals: Vec<i64> = values_arr.iter().filter_map(|v| v.as_i64()).collect();
-            Value::I64(vals)
-        }
+        Vr::SV => match parse_numeric_tokens::<i64>(tag, vr, values_arr)? {
+            Some(vals) => Value::I64(vals),
+            None => Value::Empty,
+        },
 
-        Vr::FL | Vr::OF => {
-            let vals: Vec<f32> = values_arr
-                .iter()
-                .filter_map(|v| v.as_f64().map(|n| n as f32))
-                .collect();
-            Value::F32(vals)
-        }
+        Vr::FL | Vr::OF => match parse_numeric_tokens::<f32>(tag, vr, values_arr)? {
+            Some(vals) => Value::F32(vals),
+            None => Value::Empty,
+        },
 
-        Vr::FD | Vr::OD => {
-            let vals: Vec<f64> = values_arr.iter().filter_map(|v| v.as_f64()).collect();
-            Value::F64(vals)
-        }
+        Vr::FD | Vr::OD => match parse_numeric_tokens::<f64>(tag, vr, values_arr)? {
+            Some(vals) => Value::F64(vals),
+            None => Value::Empty,
+        },
 
         Vr::AT => {
             let tags: DcmResult<Vec<Tag>> = values_arr
@@ -557,10 +633,7 @@ fn json_value_to_element(tag: Tag, val: &serde_json::Value) -> DcmResult<Element
 
         // Default: string VRs
         _ => {
-            let strings: Vec<String> = values_arr
-                .iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect();
+            let strings = json_value_tokens(tag, vr, values_arr)?;
             Value::Strings(strings)
         }
     };
@@ -745,5 +818,42 @@ mod tests {
         let err =
             to_json_with_binary_mode(&ds, BinaryValueMode::BulkDataUri(&|_| None)).unwrap_err();
         assert!(err.to_string().contains("requires BulkDataURI"));
+    }
+
+    #[test]
+    fn from_json_accepts_dcmtk_style_scalar_tokens() {
+        let json = r#"{
+            "00100020": {"vr": "LO", "Value": [123]},
+            "00200013": {"vr": "IS", "Value": ["42"]},
+            "00180050": {"vr": "DS", "Value": ["2.5"]},
+            "00280010": {"vr": "US", "Value": ["256"]}
+        }"#;
+
+        let parsed = from_json(json).unwrap();
+
+        assert_eq!(parsed.get_string(tags::PATIENT_ID), Some("123"));
+        assert_eq!(
+            parsed.get(Tag::new(0x0020, 0x0013)).unwrap().value,
+            Value::Ints(vec![42])
+        );
+        match &parsed.get(Tag::new(0x0018, 0x0050)).unwrap().value {
+            Value::Decimals(values) => assert!((values[0] - 2.5).abs() < 1e-9),
+            other => panic!("unexpected value: {:?}", other),
+        }
+        assert_eq!(parsed.get_u16(tags::ROWS), Some(256));
+    }
+
+    #[test]
+    fn from_json_rejects_non_scalar_value_entries() {
+        let err = from_json(r#"{"00100020":{"vr":"LO","Value":[{}]}}"#).unwrap_err();
+        assert!(err.to_string().contains("expected number, string or null"));
+    }
+
+    #[test]
+    fn from_json_rejects_bulk_data_uri_without_loader() {
+        let err =
+            from_json(r#"{"7FE00010":{"vr":"OB","BulkDataURI":"https://example.test/pixel"}}"#)
+                .unwrap_err();
+        assert!(err.to_string().contains("BulkDataURI"));
     }
 }

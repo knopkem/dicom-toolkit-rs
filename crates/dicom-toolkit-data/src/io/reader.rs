@@ -274,7 +274,13 @@ impl<'a> DicomCursor<'a> {
         };
 
         let value = self.read_value(tag, vr, len, undef_len, explicit, le)?;
-        Ok(Element::new(tag, vr, value))
+        let effective_vr = if vr == Vr::UN && undef_len && matches!(value, Value::Sequence(_)) {
+            // Mirror DCMTK CP-246 handling: undefined-length UN is normalized to SQ.
+            Vr::SQ
+        } else {
+            vr
+        };
+        Ok(Element::new(tag, effective_vr, value))
     }
 
     // ── Value ─────────────────────────────────────────────────────────────────
@@ -294,6 +300,12 @@ impl<'a> DicomCursor<'a> {
                 Ok(Value::Sequence(items))
             }
             _ if tag == tags::PIXEL_DATA => self.read_pixel_data(len, undef_len, le),
+            Vr::UN if undef_len => {
+                // CP-246: undefined-length UN is interpreted as a sequence encoded
+                // using Implicit VR Little Endian semantics.
+                let items = self.read_sequence(len, true, false, true)?;
+                Ok(Value::Sequence(items))
+            }
             _ => {
                 if undef_len {
                     return Err(DcmError::InvalidLength {
@@ -709,7 +721,7 @@ fn decode_ascii_string(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use crate::value::Value;
-    use dicom_toolkit_dict::Vr;
+    use dicom_toolkit_dict::{tags, Tag, Vr};
 
     fn ascii() -> DicomCharsetDecoder {
         DicomCharsetDecoder::default_ascii()
@@ -767,6 +779,24 @@ mod tests {
     }
 
     #[test]
+    fn parse_at_bytes() {
+        let bytes = [
+            0x08, 0x00, 0x20, 0x00, // (0008,0020)
+            0x08, 0x00, 0x30, 0x00, // (0008,0030)
+        ];
+        let v = parse_value_bytes(Vr::AT, &bytes, true, &ascii()).unwrap();
+        match v {
+            Value::Tags(tags) => {
+                assert_eq!(
+                    tags,
+                    vec![Tag::new(0x0008, 0x0020), Tag::new(0x0008, 0x0030)]
+                )
+            }
+            other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
     fn parse_lo_latin1() {
         // "Müller" in ISO-8859-1
         let bytes = vec![b'M', 0xFC, b'l', b'l', b'e', b'r'];
@@ -787,5 +817,37 @@ mod tests {
             Value::PersonNames(names) => assert_eq!(names[0].to_string(), "田中^太郎"),
             other => panic!("unexpected: {:?}", other),
         }
+    }
+
+    #[test]
+    fn read_undefined_length_un_as_sequence_cp246() {
+        let private_tag = Tag::new(0x7777, 0x0010);
+
+        let mut item = Vec::new();
+        item.extend_from_slice(&tags::PATIENT_ID.group.to_le_bytes());
+        item.extend_from_slice(&tags::PATIENT_ID.element.to_le_bytes());
+        item.extend_from_slice(&4u32.to_le_bytes());
+        item.extend_from_slice(b"ABCD");
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&private_tag.group.to_le_bytes());
+        bytes.extend_from_slice(&private_tag.element.to_le_bytes());
+        bytes.extend_from_slice(b"UN");
+        bytes.extend_from_slice(&[0, 0]);
+        bytes.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes());
+        bytes.extend_from_slice(&[0xFE, 0xFF, 0x00, 0xE0]); // Item
+        bytes.extend_from_slice(&(item.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&item);
+        bytes.extend_from_slice(&[0xFE, 0xFF, 0xDD, 0xE0, 0, 0, 0, 0]); // Sequence delimitation
+
+        let ds = DicomReader::new(bytes.as_slice())
+            .read_dataset("1.2.840.10008.1.2.1")
+            .unwrap();
+
+        let elem = ds.get(private_tag).unwrap();
+        assert_eq!(elem.vr, Vr::SQ);
+        let items = elem.items().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].get_string(tags::PATIENT_ID), Some("ABCD"));
     }
 }
