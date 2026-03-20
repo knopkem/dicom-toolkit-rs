@@ -1,6 +1,6 @@
 [package]
 name = "dicom-toolkit-jpeg2000"
-version = "0.4.0"
+version = "0.5.0"
 description = "A memory-safe, pure-Rust JPEG 2000 codec with native-bit-depth decode and DICOM-focused encoding support."
 authors = ["Laurenz Stampfl <laurenz.stampfl@gmail.com>"]
 edition.workspace = true
@@ -30,5 +30,5 @@ logging = ["dep:log"]
 openjph-htj2k = ["std", "dep:openjph-core"]
 
 [dev-dependencies]
-dicom-toolkit-data = { path = "../dicom-toolkit-data", version = "0.2.0" }
-dicom-toolkit-dict = { path = "../dicom-toolkit-dict", version = "0.2.0" }
+dicom-toolkit-data = { path = "../dicom-toolkit-data", version = "0.5.0" }
+dicom-toolkit-dict = { path = "../dicom-toolkit-dict", version = "0.5.0" }
