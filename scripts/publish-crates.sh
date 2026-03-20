@@ -63,10 +63,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 CRATES=(
-  "dicom-toolkit-jpeg2000"
   "dicom-toolkit-core"
   "dicom-toolkit-dict"
   "dicom-toolkit-data"
+  "dicom-toolkit-jpeg2000"
   "dicom-toolkit-image"
   "dicom-toolkit-net"
   "dicom-toolkit-codec"
