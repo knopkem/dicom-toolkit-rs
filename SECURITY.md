@@ -10,7 +10,8 @@ regulatory clearance. See the project README for the full disclaimer.
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.1.x   | ✅ Current release |
+| 0.2.x   | ✅ Current release |
+| 0.1.x   | ❌ End of life     |
 
 ## Reporting a Vulnerability
 
