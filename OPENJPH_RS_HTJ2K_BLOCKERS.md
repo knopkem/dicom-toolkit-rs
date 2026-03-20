@@ -1,55 +1,32 @@
-# openjph-rs HTJ2K migration blockers
+# openjph-rs HTJ2K migration status
 
-## Current blocker
+The earlier `irv97` parity blocker has been resolved and `dicom-toolkit-rs` now
+uses `openjph-core` as the active HTJ2K backend inside
+`crates/dicom-toolkit-jpeg2000`.
 
-The current remaining blocker for switching `dicom-toolkit-rs` HTJ2K over to
-`openjph-rs` is the broad irreversible 9/7 parity gap (`irv97`).
+## What changed
 
-## Current evidence
+- HTJ2K encode and decode now route through a dedicated OpenJPH bridge.
+- Classic JPEG 2000 remains on the existing in-workspace backend.
+- Downstream `dicom-toolkit-codec` and CLI tools continue using the same public
+  APIs.
+- HTJ2K regression coverage now uses real DICOM slices from
+  `examples/testfiles/ABDOM_*.dcm` instead of synthetic fixture codestreams.
 
-Running:
+## Current notes
 
-```text
-cargo test -p openjph-core
-```
+- The OpenJPH-backed HT path defaults to `4x1024` block dimensions when callers
+  leave the old default block-size exponents unchanged. This preserves exact
+  lossless roundtrips on the real 12-bit CT fixtures used by the regression
+  suite.
+- The OpenJPH HT decode branch is intentionally limited to DICOM-style raw
+  codestream use. HTJP2 palette/alpha/channel-definition handling remains
+  explicitly unsupported there.
 
-currently fails in:
-
-```text
-tests/integration_encode_decode.rs
-```
-
-with:
-
-```text
-38 passed; 50 failed
-```
-
-Running:
+## Recommended validation
 
 ```text
-cargo test -p openjph-core irv97
+cargo test -p dicom-toolkit-jpeg2000 --test htj2k_conformance
+cargo test -p dicom-toolkit-codec --test htj2k_registry
+cargo test -p dicom-toolkit-tools --test jp2k_cli
 ```
-
-reproduces the same blocker bucket directly.
-
-Representative failing tests:
-
-- `dec_irv97_64x64_rgb`
-- `dec_irv97_gray_tiles`
-- `enc_irv97_decomp_0`
-- `enc_irv97_16bit_gray`
-- `enc_irv97_tiles_33x33_d5`
-
-Representative current MSE values:
-
-- many 8-bit RGB failures: about `5464.9844`
-- 16-bit failures: about `1_039_004_000` to `1_053_217_000`
-
-## Recommendation for `dicom-toolkit-rs`
-
-Do **not** switch the active HTJ2K backend to `openjph-rs` yet.
-
-The next required step is a dedicated `irv97` parity pass against local C++
-OpenJPH. Only after that bucket is green should the backend swap be retried and
-the downstream HTJ2K integration tests be rerun.

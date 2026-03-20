@@ -651,12 +651,12 @@ syntaxes used in older archives and interoperability paths.
 - Library-level encode/decode plus CLI tools `dcmcjp2k` and `dcmdjp2k`
 - Multi-fragment decode (one codestream per frame) in the codec/tools path
 - HTJ2K decode for transfer syntaxes `.201`, `.202`, and `.203`, plus encode for `.201` and `.203`
-- Fixture-backed strict-mode HTJ2K decode coverage plus lossless roundtrip/recode regressions through the DICOM tools
+- Real-DICOM HTJ2K encode/decode and CLI roundtrip coverage using `examples/testfiles/ABDOM_*.dcm`
 
 **Current scope:**
 - JPEG 2000 Part 1 codestreams aimed at common DICOM usage
 - Single quality layer in the current encoder
-- HTJ2K lossless encode is self-validated and decode support is currently single-layer; the test matrix now includes real fixtures plus HTJ2K `dcmcjpls`/`dcmdjp2k` DICOM regressions
+- HTJ2K lossless encode/decode now routes through `openjph-core` for DICOM-style codestreams; the test matrix includes real DICOM registry and CLI regressions
 - Lossless and basic lossy mode; quality tuning is not yet exposed as a user-facing option
 
 ---

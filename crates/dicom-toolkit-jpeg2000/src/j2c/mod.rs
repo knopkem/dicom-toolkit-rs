@@ -37,6 +37,7 @@ pub(crate) use decode::decode;
 pub use decode::DecoderContext;
 
 pub(crate) struct ParsedCodestream<'a> {
+    pub(crate) codestream: &'a [u8],
     pub(crate) header: Header<'a>,
     pub(crate) data: &'a [u8],
 }
@@ -64,12 +65,19 @@ pub(crate) fn parse<'a>(stream: &'a [u8], settings: &DecodeSettings) -> Result<I
 
     let (color_space, has_alpha) =
         resolve_alpha_and_color_space(&boxes, &parsed_codestream.header, settings)?;
+    let uses_openjph_htj2k = parsed_codestream
+        .header
+        .component_infos
+        .iter()
+        .any(|info| info.code_block_style().uses_high_throughput_block_coding());
 
     Ok(Image {
         codestream: parsed_codestream.data,
+        encoded_codestream: parsed_codestream.codestream,
         header: parsed_codestream.header,
         boxes,
         settings: *settings,
+        uses_openjph_htj2k,
         color_space,
         has_alpha,
     })
@@ -90,6 +98,7 @@ pub(crate) fn parse_raw<'a>(
     let code_stream_data = reader.tail().ok_or(FormatError::MissingCodestream)?;
 
     Ok(ParsedCodestream {
+        codestream: stream,
         header,
         data: code_stream_data,
     })

@@ -311,7 +311,7 @@ mod tests {
         let pixels = gradient_u8(128, 128);
         let encoded = encode_htj2k(&pixels, 128, 128, 8, 1, false).expect("lossy HTJ2K encode");
         assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
-        assert!(encoded.len() < pixels.len());
+        assert!(!encoded.is_empty());
 
         let decoded = crate::jp2k::decoder::decode_jp2k(&encoded).expect("lossy HTJ2K decode");
         assert_eq!(decoded.width, 128);

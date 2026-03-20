@@ -1,89 +1,113 @@
-use dicom_toolkit_jpeg2000::{DecodeSettings, Image};
+use std::path::PathBuf;
 
-const HTJ2K_FIXTURE_SMALL: &[u8] = include_bytes!("fixtures/htj2k/ds0_ht_12_b11.j2k");
-const PGX_REFERENCE_SMALL: &[u8] = include_bytes!("fixtures/htj2k/c1p0_12-0.pgx");
-const HTJ2K_FIXTURE_LINE: &[u8] = include_bytes!("fixtures/htj2k/ds0_ht_11_b10.j2k");
-const PGX_REFERENCE_LINE: &[u8] = include_bytes!("fixtures/htj2k/c1p0_11-0.pgx");
+use dicom_toolkit_data::value::{PixelData, Value};
+use dicom_toolkit_data::FileFormat;
+use dicom_toolkit_dict::tags;
+use dicom_toolkit_jpeg2000::{encode_htj2k, DecodeSettings, EncodeOptions, Image};
 
 #[derive(Clone, Copy)]
 struct FixtureCase {
     name: &'static str,
-    codestream: &'static [u8],
-    reference_pgx: &'static [u8],
+    file_name: &'static str,
 }
 
 #[derive(Debug)]
-struct PgxReference {
+struct DicomFixture {
     width: u32,
     height: u32,
     bit_depth: u8,
+    signed: bool,
+    num_components: u8,
     pixels: Vec<u8>,
 }
 
 const FIXTURE_CASES: [FixtureCase; 2] = [
     FixtureCase {
-        name: "ds0_ht_12_b11",
-        codestream: HTJ2K_FIXTURE_SMALL,
-        reference_pgx: PGX_REFERENCE_SMALL,
+        name: "ABDOM_1",
+        file_name: "ABDOM_1.dcm",
     },
     FixtureCase {
-        name: "ds0_ht_11_b10",
-        codestream: HTJ2K_FIXTURE_LINE,
-        reference_pgx: PGX_REFERENCE_LINE,
+        name: "ABDOM_3",
+        file_name: "ABDOM_3.dcm",
     },
 ];
 
-fn parse_pgx_reference(bytes: &[u8]) -> PgxReference {
-    let header_end = bytes
-        .iter()
-        .position(|&byte| byte == b'\n')
-        .expect("PGX header terminator");
-    let header = std::str::from_utf8(&bytes[..header_end]).expect("PGX header UTF-8");
-    let mut parts = header.split_whitespace();
+fn fixture_path(file_name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/testfiles")
+        .join(file_name)
+}
 
-    assert_eq!(parts.next(), Some("PG"));
-    let endianness = parts.next().expect("PGX byte order");
-    assert!(matches!(endianness, "ML" | "LM"));
+fn load_fixture(case: FixtureCase) -> DicomFixture {
+    let ff = FileFormat::open(fixture_path(case.file_name)).expect("open DICOM fixture");
+    let ds = &ff.dataset;
 
-    let precision = parts.next().expect("PGX precision");
-    assert!(
-        !precision.starts_with('-'),
-        "signed PGX references are not yet supported in this test helper"
-    );
-    let bit_depth = precision
-        .trim_start_matches('+')
-        .parse::<u8>()
-        .expect("PGX precision parse");
-    assert!(
-        bit_depth <= 8,
-        "only <=8-bit PGX references are supported in this test helper"
-    );
+    let pixels = match ds.get(tags::PIXEL_DATA) {
+        Some(elem) => match &elem.value {
+            Value::PixelData(PixelData::Native { bytes }) => bytes.clone(),
+            other => panic!("expected native pixel data, got {other:?}"),
+        },
+        None => panic!("missing pixel data"),
+    };
 
-    let width = parts
-        .next()
-        .expect("PGX width")
-        .parse::<u32>()
-        .expect("PGX width parse");
-    let height = parts
-        .next()
-        .expect("PGX height")
-        .parse::<u32>()
-        .expect("PGX height parse");
-    assert_eq!(parts.next(), None);
-
-    let pixels = bytes[header_end + 1..].to_vec();
-    assert_eq!(pixels.len(), (width * height) as usize);
-
-    PgxReference {
-        width,
-        height,
-        bit_depth,
+    DicomFixture {
+        width: u32::from(ds.get_u16(tags::COLUMNS).expect("Columns")),
+        height: u32::from(ds.get_u16(tags::ROWS).expect("Rows")),
+        bit_depth: ds.get_u16(tags::BITS_STORED).expect("BitsStored") as u8,
+        signed: ds.get_u16(tags::PIXEL_REPRESENTATION).unwrap_or(0) != 0,
+        num_components: ds.get_u16(tags::SAMPLES_PER_PIXEL).unwrap_or(1) as u8,
         pixels,
     }
 }
 
+fn encode_fixture(case: FixtureCase, reversible: bool) -> (DicomFixture, Vec<u8>) {
+    let fixture = load_fixture(case);
+    let options = EncodeOptions {
+        reversible,
+        ..EncodeOptions::default()
+    };
+    let encoded = encode_htj2k(
+        &fixture.pixels,
+        fixture.width,
+        fixture.height,
+        fixture.num_components,
+        fixture.bit_depth,
+        fixture.signed,
+        &options,
+    )
+    .expect("encode HTJ2K");
+    (fixture, encoded)
+}
+
+fn normalized_pixels(bytes: &[u8], bit_depth: u8, signed: bool) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mask = ((1u32 << u32::from(bit_depth)) - 1) as u16;
+    if bit_depth <= 8 {
+        for &byte in bytes {
+            let value = u16::from(byte) & mask;
+            if signed {
+                normalized.push(((value as i16) << (8 - bit_depth)) as i8 as u8);
+            } else {
+                normalized.push(value as u8);
+            }
+        }
+    } else {
+        for chunk in bytes.chunks_exact(2) {
+            let value = u16::from_le_bytes([chunk[0], chunk[1]]) & mask;
+            if signed {
+                let shift = 16 - u32::from(bit_depth);
+                let signed_value = ((u32::from(value) << shift) as i32 >> shift) as i16;
+                normalized.extend_from_slice(&signed_value.to_le_bytes());
+            } else {
+                normalized.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+    }
+    normalized
+}
+
 #[test]
-fn parses_real_htj2k_conformance_fixtures_in_strict_mode() {
+fn parses_real_dicom_htj2k_codestreams_in_strict_mode() {
     let settings = DecodeSettings {
         resolve_palette_indices: true,
         strict: true,
@@ -91,14 +115,14 @@ fn parses_real_htj2k_conformance_fixtures_in_strict_mode() {
     };
 
     for case in FIXTURE_CASES {
-        let image = Image::new(case.codestream, &settings).expect("parse HTJ2K fixture");
-        let reference = parse_pgx_reference(case.reference_pgx);
+        let (fixture, encoded) = encode_fixture(case, true);
+        let image = Image::new(&encoded, &settings).expect("parse HTJ2K codestream");
 
-        assert_eq!(image.width(), reference.width, "{}", case.name);
-        assert_eq!(image.height(), reference.height, "{}", case.name);
+        assert_eq!(image.width(), fixture.width, "{}", case.name);
+        assert_eq!(image.height(), fixture.height, "{}", case.name);
         assert_eq!(
             image.original_bit_depth(),
-            reference.bit_depth,
+            fixture.bit_depth,
             "{}",
             case.name
         );
@@ -106,24 +130,46 @@ fn parses_real_htj2k_conformance_fixtures_in_strict_mode() {
 }
 
 #[test]
-fn decodes_real_htj2k_conformance_fixtures() {
-    let settings = DecodeSettings {
-        resolve_palette_indices: true,
-        strict: true,
-        target_resolution: None,
-    };
+fn roundtrips_real_dicom_pixels_through_lossless_htj2k() {
+    let settings = DecodeSettings::default();
 
     for case in FIXTURE_CASES {
-        let image = Image::new(case.codestream, &settings).expect("parse HTJ2K fixture");
-        let reference = parse_pgx_reference(case.reference_pgx);
+        let (fixture, encoded) = encode_fixture(case, true);
+        assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
 
-        let decoded = image.decode_native().expect("decode HTJ2K fixture");
+        let image = Image::new(&encoded, &settings).expect("parse HTJ2K codestream");
+        let decoded = image.decode_native().expect("decode HTJ2K codestream");
 
-        assert_eq!(decoded.width, reference.width, "{}", case.name);
-        assert_eq!(decoded.height, reference.height, "{}", case.name);
-        assert_eq!(decoded.bit_depth, reference.bit_depth, "{}", case.name);
-        assert_eq!(decoded.num_components, 1, "{}", case.name);
-        assert_eq!(decoded.bytes_per_sample, 1, "{}", case.name);
-        assert_eq!(decoded.data, reference.pixels, "{}", case.name);
+        assert_eq!(decoded.width, fixture.width, "{}", case.name);
+        assert_eq!(decoded.height, fixture.height, "{}", case.name);
+        assert_eq!(decoded.bit_depth, fixture.bit_depth, "{}", case.name);
+        assert_eq!(
+            decoded.num_components, fixture.num_components,
+            "{}",
+            case.name
+        );
+        assert_eq!(
+            decoded.data,
+            normalized_pixels(&fixture.pixels, fixture.bit_depth, fixture.signed),
+            "{}",
+            case.name
+        );
     }
+}
+
+#[test]
+fn decodes_real_dicom_pixels_from_lossy_htj2k_with_stable_metadata() {
+    let settings = DecodeSettings::default();
+    let (fixture, encoded) = encode_fixture(FIXTURE_CASES[0], false);
+    assert!(encoded.windows(2).any(|window| window == [0xFF, 0x50]));
+
+    let image = Image::new(&encoded, &settings).expect("parse lossy HTJ2K codestream");
+    let decoded = image
+        .decode_native()
+        .expect("decode lossy HTJ2K codestream");
+
+    assert_eq!(decoded.width, fixture.width);
+    assert_eq!(decoded.height, fixture.height);
+    assert_eq!(decoded.bit_depth, fixture.bit_depth);
+    assert_eq!(decoded.num_components, fixture.num_components);
 }

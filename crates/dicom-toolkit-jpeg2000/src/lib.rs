@@ -88,6 +88,8 @@ pub mod error;
 #[macro_use]
 pub(crate) mod log;
 pub(crate) mod math;
+#[cfg(feature = "openjph-htj2k")]
+mod openjph_htj2k;
 pub(crate) mod writer;
 
 use crate::math::{dispatch, f32x8, Level, Simd, SIMD_WIDTH};
@@ -143,8 +145,10 @@ impl Default for DecodeSettings {
 
 /// A JPEG2000 image or codestream.
 pub struct Image<'a> {
-    /// The codestream containing the data to decode.
+    /// The tile-part payload used by the legacy JPEG 2000 decoder.
     pub(crate) codestream: &'a [u8],
+    /// The complete raw codestream (SOC..EOC), used by the OpenJPH HTJ2K backend.
+    pub(crate) encoded_codestream: &'a [u8],
     /// The header of the J2C codestream.
     pub(crate) header: Header<'a>,
     /// The JP2 boxes of the image. In the case of a raw codestream, we
@@ -152,6 +156,8 @@ pub struct Image<'a> {
     pub(crate) boxes: ImageBoxes,
     /// Settings that should be applied during decoding.
     pub(crate) settings: DecodeSettings,
+    /// Whether the codestream uses HT block coding and should be decoded by OpenJPH.
+    pub(crate) uses_openjph_htj2k: bool,
     /// Whether the image has an alpha channel.
     pub(crate) has_alpha: bool,
     /// The color space of the image.
@@ -219,6 +225,21 @@ impl<'a> Image<'a> {
     /// This is essential for medical imaging (DICOM) where 12-bit and 16-bit
     /// images must preserve their full dynamic range.
     pub fn decode_native(&self) -> Result<RawBitmap> {
+        #[cfg(feature = "openjph-htj2k")]
+        if self.uses_openjph_htj2k {
+            return openjph_htj2k::decode_native(
+                self.encoded_codestream,
+                self.width(),
+                self.height(),
+                self.original_bit_depth(),
+                self.header.component_infos.len() as u8,
+                self.header.skipped_resolution_levels,
+            )
+            .map_err(|_| {
+                DecodeError::Decoding(DecodingError::UnsupportedFeature("OpenJPH HTJ2K decode"))
+            });
+        }
+
         let mut decoder_context = DecoderContext::default();
         j2c::decode(self.codestream, &self.header, &mut decoder_context)?;
 
@@ -295,6 +316,23 @@ impl<'a> Image<'a> {
         buf: &mut [u8],
         decoder_context: &mut DecoderContext<'a>,
     ) -> Result<()> {
+        #[cfg(feature = "openjph-htj2k")]
+        if self.uses_openjph_htj2k {
+            if self.has_alpha
+                || self.boxes.palette.is_some()
+                || self.boxes.component_mapping.is_some()
+                || self.boxes.channel_definition.is_some()
+            {
+                return Err(DecodeError::Decoding(DecodingError::UnsupportedFeature(
+                    "OpenJPH HTJ2K JP2 palette/alpha handling",
+                )));
+            }
+
+            let raw = self.decode_native()?;
+            copy_raw_bitmap_to_u8(&raw, buf);
+            return Ok(());
+        }
+
         let settings = &self.settings;
         j2c::decode(self.codestream, &self.header, decoder_context)?;
         let mut decoded_image = DecodedImage {
@@ -335,6 +373,23 @@ impl<'a> Image<'a> {
         interleave_and_convert(&mut decoded_image, buf);
 
         Ok(())
+    }
+}
+
+fn copy_raw_bitmap_to_u8(raw: &RawBitmap, buf: &mut [u8]) {
+    let expected_len = raw.width as usize * raw.height as usize * raw.num_components as usize;
+    debug_assert_eq!(buf.len(), expected_len);
+
+    if raw.bytes_per_sample == 1 {
+        buf.copy_from_slice(&raw.data[..expected_len]);
+        return;
+    }
+
+    let max_value = ((1u32 << raw.bit_depth) - 1).max(1);
+    for (index, out) in buf.iter_mut().enumerate() {
+        let byte_offset = index * 2;
+        let sample = u16::from_le_bytes([raw.data[byte_offset], raw.data[byte_offset + 1]]) as u32;
+        *out = ((sample * 255 + (max_value / 2)) / max_value) as u8;
     }
 }
 

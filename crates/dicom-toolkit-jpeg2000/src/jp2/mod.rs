@@ -135,12 +135,19 @@ pub(crate) fn parse<'a>(data: &'a [u8], mut settings: DecodeSettings) -> Result<
 
     let (color_space, has_alpha) =
         resolve_alpha_and_color_space(&image_boxes, &parsed_codestream.header, &settings)?;
+    let uses_openjph_htj2k = parsed_codestream
+        .header
+        .component_infos
+        .iter()
+        .any(|info| info.code_block_style().uses_high_throughput_block_coding());
 
     Ok(Image {
         codestream: parsed_codestream.data,
+        encoded_codestream: parsed_codestream.codestream,
         header: parsed_codestream.header,
         boxes: image_boxes,
         settings,
+        uses_openjph_htj2k,
         color_space,
         has_alpha,
     })

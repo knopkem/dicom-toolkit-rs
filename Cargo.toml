@@ -31,7 +31,7 @@ dicom-toolkit-image = { path = "crates/dicom-toolkit-image", version = "0.2.0" }
 dicom-toolkit-codec = { path = "crates/dicom-toolkit-codec", version = "0.2.0" }
 
 # JPEG 2000 (published fork for DICOM-native decode/encode support)
-dicom-toolkit-jpeg2000 = { path = "crates/dicom-toolkit-jpeg2000", version = "0.4.0", default-features = false, features = ["std", "simd"] }
+dicom-toolkit-jpeg2000 = { path = "crates/dicom-toolkit-jpeg2000", version = "0.4.0", default-features = false, features = ["std", "simd", "openjph-htj2k"] }
 
 # Error handling
 thiserror = "2"

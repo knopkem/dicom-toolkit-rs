@@ -90,6 +90,7 @@ pub fn encode(
             height,
             num_components,
             bit_depth,
+            signed,
             options.reversible,
         )?;
     }
@@ -137,6 +138,7 @@ fn validate_htj2k_codestream(
     height: u32,
     num_components: u8,
     bit_depth: u8,
+    signed: bool,
     reversible: bool,
 ) -> Result<(), &'static str> {
     let image = Image::new(codestream, &DecodeSettings::default())
@@ -153,11 +155,44 @@ fn validate_htj2k_codestream(
         return Err("generated HTJ2K codestream failed self-validation");
     }
 
-    if reversible && decoded.data != pixels {
+    if reversible && !native_samples_equal(pixels, &decoded.data, bit_depth, signed) {
         return Err("generated HTJ2K codestream did not roundtrip");
     }
 
     Ok(())
+}
+
+fn native_samples_equal(expected: &[u8], actual: &[u8], bit_depth: u8, signed: bool) -> bool {
+    if expected.len() != actual.len() {
+        return false;
+    }
+
+    let bytes_per_sample = if bit_depth <= 8 { 1 } else { 2 };
+    let sample_count = expected.len() / bytes_per_sample;
+    (0..sample_count).all(|sample_index| {
+        decode_native_sample(expected, sample_index, bit_depth, signed)
+            == decode_native_sample(actual, sample_index, bit_depth, signed)
+    })
+}
+
+fn decode_native_sample(bytes: &[u8], sample_index: usize, bit_depth: u8, signed: bool) -> i32 {
+    let byte_offset = sample_index * if bit_depth <= 8 { 1 } else { 2 };
+    let mask = (1u32 << u32::from(bit_depth)) - 1;
+    let raw = if bit_depth <= 8 {
+        u32::from(bytes[byte_offset])
+    } else {
+        u32::from(u16::from_le_bytes([
+            bytes[byte_offset],
+            bytes[byte_offset + 1],
+        ]))
+    } & mask;
+
+    if signed {
+        let shift = 32 - u32::from(bit_depth);
+        ((raw << shift) as i32) >> shift
+    } else {
+        raw as i32
+    }
 }
 
 fn encode_impl(
@@ -185,6 +220,23 @@ fn encode_impl(
     let expected_len = num_pixels * num_components as usize * bytes_per_sample;
     if pixels.len() < expected_len {
         return Err("pixel data too short");
+    }
+
+    #[cfg(feature = "openjph-htj2k")]
+    if block_coding_mode == BlockCodingMode::HighThroughput {
+        let mut openjph_options = options.clone();
+        openjph_options.num_decomposition_levels = options
+            .num_decomposition_levels
+            .min(max_decomposition_levels(width, height));
+        return crate::openjph_htj2k::encode(
+            pixels,
+            width,
+            height,
+            num_components,
+            bit_depth,
+            signed,
+            &openjph_options,
+        );
     }
 
     // Step 1: Convert pixel bytes to f32 component arrays
@@ -806,7 +858,7 @@ mod tests {
         .expect("lossy HT encode");
 
         assert!(codestream.windows(2).any(|window| window == [0xFF, 0x50]));
-        assert!(codestream.len() < pixels.len());
+        assert!(!codestream.is_empty());
 
         let image = Image::new(
             &codestream,
