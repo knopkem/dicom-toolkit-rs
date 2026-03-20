@@ -289,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-codec"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "dicom-toolkit-core",
  "dicom-toolkit-data",
@@ -306,7 +306,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-core"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "crc32fast",
  "encoding_rs",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-data"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "base64",
  "bytes",
@@ -338,7 +338,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-dict"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "dicom-toolkit-core",
  "proptest",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-image"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "dicom-toolkit-core",
  "dicom-toolkit-data",
@@ -361,7 +361,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-jpeg2000"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dicom-toolkit-data",
  "dicom-toolkit-dict",
@@ -372,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-net"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "bytes",
  "dicom-toolkit-core",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-toolkit-tools"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "dicom-toolkit-codec",
@@ -802,6 +802,8 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "openjph-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8b96ed12b3d41623a771af4af8131abf353bc822b7a567c6ef3b35ab967a36d"
 dependencies = [
  "thiserror",
 ]
