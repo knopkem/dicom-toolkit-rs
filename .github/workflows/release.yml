@@ -4,17 +4,47 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag
+        shell: bash
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}" || {
+            echo "Release tag does not exist: ${RELEASE_TAG}" >&2
+            exit 1
+          }
+
   # ── Build binaries for each platform ──────────────────────────────────────────
   build:
     name: Build (${{ matrix.target }})
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -40,6 +70,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -70,7 +102,7 @@ jobs:
       - name: Package (tar.gz)
         if: matrix.archive == 'tar.gz'
         run: |
-          STAGING="dicom-toolkit-${{ github.ref_name }}-${{ matrix.target }}"
+          STAGING="dicom-toolkit-${{ env.RELEASE_TAG }}-${{ matrix.target }}"
           mkdir -p "${STAGING}"
           for bin in dcmdump echoscu storescu storescp findscu getscu img2dcm dcmcjpls dcmdjpls dcmcjp2k dcmdjp2k; do
             cp "target/${{ matrix.target }}/release/${bin}" "${STAGING}/"
@@ -84,7 +116,7 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $staging = "dicom-toolkit-${{ github.ref_name }}-${{ matrix.target }}"
+          $staging = "dicom-toolkit-${{ env.RELEASE_TAG }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $staging
           $bins = @("dcmdump", "echoscu", "storescu", "storescp", "findscu", "getscu", "img2dcm", "dcmcjpls", "dcmdjpls", "dcmcjp2k", "dcmdjp2k")
           foreach ($bin in $bins) {
@@ -108,6 +140,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -125,6 +159,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: false
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           body: |
             ## ⚠️ NOT FOR CLINICAL USE

@@ -13,6 +13,14 @@ pub mod r#move;
 pub mod provider;
 pub mod store;
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct SubOperationCounts {
+    pub remaining: u16,
+    pub completed: u16,
+    pub failed: u16,
+    pub warning: u16,
+}
+
 pub(crate) fn command_has_dataset(cmd: &DataSet) -> bool {
     cmd.get_u16(tags::COMMAND_DATA_SET_TYPE)
         .map(|v| v != 0x0101)

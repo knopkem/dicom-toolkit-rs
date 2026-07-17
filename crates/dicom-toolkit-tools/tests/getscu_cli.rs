@@ -3,10 +3,14 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
+use dicom_toolkit_core::error::DcmResult;
 use dicom_toolkit_core::uid::sop_class;
 use dicom_toolkit_data::{DataSet, DicomWriter, FileFormat};
 use dicom_toolkit_dict::{tags, Vr};
-use dicom_toolkit_net::{DicomServer, GetEvent, GetServiceProvider, RetrieveItem};
+use dicom_toolkit_net::{
+    DatasetSource, DicomServer, GetEvent, GetRetrievePlan, StreamingGetServiceProvider,
+    StreamingRetrieveItem,
+};
 
 const TS_EXPLICIT_LE: &str = "1.2.840.10008.1.2.1";
 
@@ -40,12 +44,12 @@ fn loopback_addr(addr: SocketAddr) -> SocketAddr {
 
 #[derive(Clone)]
 struct FixedGetProvider {
-    items: Vec<RetrieveItem>,
+    items: Vec<StreamingRetrieveItem>,
 }
 
-impl GetServiceProvider for FixedGetProvider {
-    async fn on_get(&self, _event: GetEvent) -> Vec<RetrieveItem> {
-        self.items.clone()
+impl StreamingGetServiceProvider for FixedGetProvider {
+    async fn on_get_stream(&self, _event: GetEvent) -> DcmResult<GetRetrievePlan> {
+        GetRetrievePlan::from_items(self.items.clone())
     }
 }
 
@@ -58,11 +62,12 @@ async fn getscu_retrieves_and_saves_instances() {
     let server = DicomServer::builder()
         .ae_title("GETSCP")
         .port(0)
-        .get_provider(FixedGetProvider {
-            items: vec![RetrieveItem {
+        .streaming_get_provider(FixedGetProvider {
+            items: vec![StreamingRetrieveItem {
                 sop_class_uid: sop_class::CT_IMAGE_STORAGE.to_string(),
                 sop_instance_uid: "1.2.3.4.5.6".to_string(),
-                dataset: inst_bytes,
+                transfer_syntax_uid: TS_EXPLICIT_LE.to_string(),
+                dataset: DatasetSource::bytes(inst_bytes),
             }],
         })
         .build()

@@ -363,7 +363,7 @@ impl<'a> Image<'a> {
                         }),
                 )
                 .collect::<Vec<_>>();
-            components.sort_by(|c1, c2| c1.1.cmp(&c2.1));
+            components.sort_by_key(|component| component.1);
             *decoded_image.decoded_components = components.into_iter().map(|c| c.0).collect();
         }
 

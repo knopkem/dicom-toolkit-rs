@@ -2,6 +2,8 @@
 //!
 //! Mirrors DCMTK's `DcmAssociationConfiguration` / `T_ASC_Parameters`.
 
+use crate::pdu::{AsynchronousOperationsWindow, ScpScuRoleSelection};
+
 // ── AssociationConfig ─────────────────────────────────────────────────────────
 
 /// Configuration for both SCU (outbound) and SCP (inbound) associations.
@@ -12,7 +14,7 @@ pub struct AssociationConfig {
 
     /// Maximum PDU length we are willing to receive (bytes).
     ///
-    /// A value of `0` means unlimited.  Defaults to 65 536.
+    /// A value of `0` means unlimited. Defaults to 65 536.
     pub max_pdu_length: u32,
 
     /// Seconds to wait for a response during association negotiation and
@@ -63,6 +65,42 @@ impl Default for AssociationConfig {
     }
 }
 
+/// Additive association controls for bounded resources and extended negotiation.
+///
+/// Keeping these controls separate preserves construction of
+/// [`AssociationConfig`] with public struct literals from earlier releases.
+#[derive(Debug, Clone)]
+pub struct AssociationOptions {
+    /// Absolute limit for a received PDU variable field.
+    pub maximum_incoming_pdu_length: u32,
+    /// Local upper bound for outgoing P-DATA-TF variable fields.
+    pub maximum_outgoing_pdu_length: u32,
+    /// Asynchronous operations window proposed on outbound associations.
+    pub requested_asynchronous_operations_window: Option<AsynchronousOperationsWindow>,
+    /// Maximum asynchronous window accepted for inbound associations.
+    pub maximum_asynchronous_operations_window: AsynchronousOperationsWindow,
+    /// SCP/SCU role selections proposed on outbound associations.
+    pub requested_role_selections: Vec<ScpScuRoleSelection>,
+    /// Whether an inbound requestor may negotiate the SCU role.
+    pub accept_requestor_scu_role: bool,
+    /// Whether an inbound requestor may negotiate the SCP role.
+    pub accept_requestor_scp_role: bool,
+}
+
+impl Default for AssociationOptions {
+    fn default() -> Self {
+        Self {
+            maximum_incoming_pdu_length: 16 * 1024 * 1024,
+            maximum_outgoing_pdu_length: 65_536,
+            requested_asynchronous_operations_window: None,
+            maximum_asynchronous_operations_window: AsynchronousOperationsWindow::default(),
+            requested_role_selections: Vec::new(),
+            accept_requestor_scu_role: true,
+            accept_requestor_scp_role: false,
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -78,5 +116,19 @@ mod tests {
         assert!(cfg.accepted_transfer_syntaxes.is_empty());
         assert!(cfg.preferred_transfer_syntaxes.is_empty());
         assert!(!cfg.implementation_class_uid.is_empty());
+    }
+
+    #[test]
+    fn default_options_are_bounded_and_synchronous() {
+        let options = AssociationOptions::default();
+        assert_eq!(options.maximum_incoming_pdu_length, 16 * 1024 * 1024);
+        assert_eq!(options.maximum_outgoing_pdu_length, 65_536);
+        assert_eq!(
+            options.maximum_asynchronous_operations_window,
+            AsynchronousOperationsWindow::default()
+        );
+        assert!(options.requested_role_selections.is_empty());
+        assert!(options.accept_requestor_scu_role);
+        assert!(!options.accept_requestor_scp_role);
     }
 }

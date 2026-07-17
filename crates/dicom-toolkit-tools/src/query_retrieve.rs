@@ -5,7 +5,7 @@ use dicom_toolkit_core::uid::{sop_class, transfer_syntax};
 use dicom_toolkit_data::value::Value;
 use dicom_toolkit_data::{DataSet, DicomReader};
 use dicom_toolkit_dict::{tags, Tag, Vr};
-use dicom_toolkit_net::{Association, PresentationContextRq};
+use dicom_toolkit_net::{Association, PresentationContextRq, ScpScuRoleSelection};
 
 pub const TS_EXPLICIT_VR_LE: &str = transfer_syntax::EXPLICIT_VR_LITTLE_ENDIAN;
 pub const TS_IMPLICIT_VR_LE: &str = transfer_syntax::IMPLICIT_VR_LITTLE_ENDIAN;
@@ -104,6 +104,18 @@ pub fn qr_get_contexts() -> Vec<PresentationContextRq> {
     }
 
     contexts
+}
+
+/// Return the requestor-SCP role selections required for C-GET storage contexts.
+pub fn qr_get_role_selections() -> Vec<ScpScuRoleSelection> {
+    STORAGE_SOP_CLASSES
+        .iter()
+        .map(|sop_class_uid| ScpScuRoleSelection {
+            sop_class_uid: (*sop_class_uid).to_string(),
+            scu_role: false,
+            scp_role: true,
+        })
+        .collect()
 }
 
 pub fn select_accepted_context(

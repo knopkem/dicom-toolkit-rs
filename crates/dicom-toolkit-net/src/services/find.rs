@@ -3,9 +3,15 @@
 use dicom_toolkit_core::error::DcmResult;
 use dicom_toolkit_data::{io::reader::DicomReader, io::writer::DicomWriter, DataSet};
 use dicom_toolkit_dict::tags;
+use futures_util::StreamExt;
+use tracing::warn;
 
 use crate::association::Association;
-use crate::services::provider::{FindEvent, FindServiceProvider};
+use crate::services::provider::{
+    find_responses, FindEvent, FindResponseStream, FindServiceProvider,
+    StreamingFindServiceProvider, STATUS_DATASET_MISMATCH, STATUS_SUCCESS,
+    STATUS_UNABLE_TO_PROCESS,
+};
 use crate::services::recv_command_data_bytes;
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -134,14 +140,127 @@ where
         identifier,
     };
 
-    let matches = provider.on_find(event).await;
+    let matches = find_responses(provider.on_find(event).await);
+    send_find_matches(
+        assoc,
+        ctx_id,
+        &sop_class,
+        msg_id,
+        &negotiated_ts,
+        matches,
+        false,
+    )
+    .await
+}
 
+/// Handle a C-FIND-RQ with a lazy, fallible provider.
+pub async fn handle_streaming_find_rq<P>(
+    assoc: &mut Association,
+    ctx_id: u8,
+    cmd: &DataSet,
+    provider: &P,
+) -> DcmResult<()>
+where
+    P: StreamingFindServiceProvider,
+{
+    let sop_class = cmd
+        .get_string(tags::AFFECTED_SOP_CLASS_UID)
+        .unwrap_or_default()
+        .trim_end_matches('\0')
+        .to_string();
+    let msg_id = cmd.get_u16(tags::MESSAGE_ID).unwrap_or(1);
+    let query_bytes = recv_command_data_bytes(assoc, cmd).await?;
+    let negotiated_ts = assoc
+        .context_by_id(ctx_id)
+        .map(|context| context.transfer_syntax.trim_end_matches('\0').to_string())
+        .unwrap_or_else(|| TS_EXPLICIT_LE.to_string());
+    let identifier = match DicomReader::new(query_bytes.as_slice()).read_dataset(&negotiated_ts) {
+        Ok(identifier) => identifier,
+        Err(error) => {
+            warn!(%error, "failed to decode C-FIND identifier");
+            return send_final_response(assoc, ctx_id, &sop_class, msg_id, STATUS_DATASET_MISMATCH)
+                .await;
+        }
+    };
+    let event = FindEvent {
+        calling_ae: assoc.calling_ae.clone(),
+        sop_class_uid: sop_class.clone(),
+        identifier,
+    };
+    let matches = match provider.on_find_stream(event).await {
+        Ok(matches) => matches,
+        Err(error) => {
+            warn!(%error, "streaming C-FIND provider failed before producing results");
+            return send_final_response(
+                assoc,
+                ctx_id,
+                &sop_class,
+                msg_id,
+                STATUS_UNABLE_TO_PROCESS,
+            )
+            .await;
+        }
+    };
+    send_find_matches(
+        assoc,
+        ctx_id,
+        &sop_class,
+        msg_id,
+        &negotiated_ts,
+        matches,
+        true,
+    )
+    .await
+}
+
+async fn send_find_matches(
+    assoc: &mut Association,
+    ctx_id: u8,
+    sop_class: &str,
+    msg_id: u16,
+    negotiated_ts: &str,
+    mut matches: FindResponseStream,
+    strict_failures: bool,
+) -> DcmResult<()> {
     // Send one pending RSP per match.
-    for result_ds in &matches {
-        let result_bytes = encode_dataset(result_ds, &negotiated_ts)?;
+    while let Some(result) = matches.next().await {
+        let result_ds = match result {
+            Ok(result_ds) => result_ds,
+            Err(error) => {
+                if !strict_failures {
+                    return Err(error);
+                }
+                warn!(%error, "C-FIND result stream failed");
+                return send_final_response(
+                    assoc,
+                    ctx_id,
+                    sop_class,
+                    msg_id,
+                    STATUS_UNABLE_TO_PROCESS,
+                )
+                .await;
+            }
+        };
+        let result_bytes = match encode_dataset(&result_ds, negotiated_ts) {
+            Ok(result_bytes) => result_bytes,
+            Err(error) => {
+                if !strict_failures {
+                    return Err(error);
+                }
+                warn!(%error, "failed to encode C-FIND result");
+                return send_final_response(
+                    assoc,
+                    ctx_id,
+                    sop_class,
+                    msg_id,
+                    STATUS_UNABLE_TO_PROCESS,
+                )
+                .await;
+            }
+        };
 
         let mut rsp = DataSet::new();
-        rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+        rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, sop_class);
         rsp.set_u16(tags::COMMAND_FIELD, 0x8020); // C-FIND-RSP
         rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
         rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0000); // dataset present
@@ -151,13 +270,22 @@ where
         assoc.send_dimse_data(ctx_id, &result_bytes).await?;
     }
 
-    // Send final success response (no dataset).
+    send_final_response(assoc, ctx_id, sop_class, msg_id, STATUS_SUCCESS).await
+}
+
+async fn send_final_response(
+    assoc: &mut Association,
+    ctx_id: u8,
+    sop_class: &str,
+    msg_id: u16,
+    status: u16,
+) -> DcmResult<()> {
     let mut final_rsp = DataSet::new();
-    final_rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, &sop_class);
+    final_rsp.set_uid(tags::AFFECTED_SOP_CLASS_UID, sop_class);
     final_rsp.set_u16(tags::COMMAND_FIELD, 0x8020); // C-FIND-RSP
     final_rsp.set_u16(tags::MESSAGE_ID_BEING_RESPONDED_TO, msg_id);
     final_rsp.set_u16(tags::COMMAND_DATA_SET_TYPE, 0x0101); // no dataset
-    final_rsp.set_u16(tags::STATUS, 0x0000); // success
+    final_rsp.set_u16(tags::STATUS, status);
 
     assoc.send_dimse_command(ctx_id, &final_rsp).await
 }

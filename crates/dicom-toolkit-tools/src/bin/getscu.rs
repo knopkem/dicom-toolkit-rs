@@ -11,10 +11,12 @@ use clap::Parser;
 use dicom_toolkit_core::error::DcmResult;
 use dicom_toolkit_core::uid::sop_class;
 use dicom_toolkit_data::{DicomWriter, FileFormat, FileMetaInformation};
-use dicom_toolkit_net::{c_get, Association, AssociationConfig, GetRequest, ReceivedInstance};
+use dicom_toolkit_net::{
+    c_get, Association, AssociationConfig, AssociationOptions, GetRequest, ReceivedInstance,
+};
 use dicom_toolkit_tools::query_retrieve::{
     accepted_transfer_syntax, build_query, decode_dataset_with_fallback, print_dataset,
-    qr_get_contexts, select_accepted_context, TS_EXPLICIT_VR_LE,
+    qr_get_contexts, qr_get_role_selections, select_accepted_context, TS_EXPLICIT_VR_LE,
 };
 
 #[derive(Parser)]
@@ -94,16 +96,27 @@ async fn main() {
         local_ae_title: args.aetitle.clone(),
         ..Default::default()
     };
+    let options = AssociationOptions {
+        requested_role_selections: qr_get_role_selections(),
+        ..Default::default()
+    };
 
-    let mut assoc =
-        match Association::request(&addr, &args.called_ae, &args.aetitle, &contexts, &config).await
-        {
-            Ok(a) => a,
-            Err(e) => {
-                eprintln!("Association failed: {}", e);
-                process::exit(1);
-            }
-        };
+    let mut assoc = match Association::request_with_options(
+        &addr,
+        &args.called_ae,
+        &args.aetitle,
+        &contexts,
+        &config,
+        &options,
+    )
+    .await
+    {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Association failed: {}", e);
+            process::exit(1);
+        }
+    };
 
     let (ctx_id, sop_class_uid) = match select_accepted_context(
         &assoc,

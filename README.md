@@ -8,7 +8,7 @@ A pure-Rust port of [DCMTK](https://dicom.offis.de/dcmtk.php.en) 3.7.0 — a com
 
 This is an independent project, not affiliated with or endorsed by OFFIS e.V. See [NOTICE](NOTICE) for attribution details.
 
-[![Tests](https://img.shields.io/badge/tests-488%20passing-brightgreen)](#status)
+[![Tests](https://img.shields.io/badge/tests-602%20passing-brightgreen)](#status)
 
 ---
 
@@ -16,12 +16,12 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 
 | Tier | Scope | Tests |
 |------|-------|-------|
-| 1 — Foundation | `dicom-toolkit-core`, `dicom-toolkit-dict` | 43 + 38 |
-| 2 — Data model & I/O | `dicom-toolkit-data` | 153 |
-| 3 — Networking | `dicom-toolkit-net` | 59 |
-| 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec`, `dicom-toolkit-jpeg2000` | 44 + 89 + 46 |
-| Tools | `dicom-toolkit-tools` | 10 integration |
-| **Total** | | **482 unit/integration + 6 doctests = 488 passing, 0 failed** |
+| 1 — Foundation | `dicom-toolkit-core`, `dicom-toolkit-dict` | 44 + 42 |
+| 2 — Data model & I/O | `dicom-toolkit-data` | 182 |
+| 3 — Networking | `dicom-toolkit-net` | 81 |
+| 4 — Imaging & codecs | `dicom-toolkit-image`, `dicom-toolkit-codec`, `dicom-toolkit-jpeg2000` | 55 + 109 + 69 |
+| Tools | `dicom-toolkit-tools` | 14 integration |
+| **Total** | | **596 unit/integration + 6 doctests = 602 passing, 0 failed** |
 
 ---
 
@@ -31,7 +31,7 @@ This is an independent project, not affiliated with or endorsed by OFFIS e.V. Se
 |-------|-----------------|-------------|
 | [`dicom-toolkit-core`](crates/dicom-toolkit-core) | `ofstd`, `oficonv`, `oflog` | Error types, UIDs, **full character set support** (ISO 2022 + single-byte + UTF-8), logging |
 | [`dicom-toolkit-dict`](crates/dicom-toolkit-dict) | `dcmdata` (dict) | 90+ tag constants, all 34 VRs, 13 transfer syntaxes, SOP class UID registry |
-| [`dicom-toolkit-data`](crates/dicom-toolkit-data) | `dcmdata` | DICOM data model, Part 10 file reader/writer, DICOM JSON (PS3.18), XML, deflate |
+| [`dicom-toolkit-data`](crates/dicom-toolkit-data) | `dcmdata` | DICOM data model, Part 10 file reader/writer and bounded index inspection, DICOM JSON (PS3.18), XML, deflate |
 | [`dicom-toolkit-net`](crates/dicom-toolkit-net) | `dcmnet`, `dcmtls` | Async DICOM networking: PDU layer, association, C-ECHO/STORE/FIND/GET/MOVE, TLS |
 | [`dicom-toolkit-image`](crates/dicom-toolkit-image) | `dcmimgle`, `dcmimage` | Pixel pipeline, Modality/VOI LUT, window/level, overlays, color models, PNG export |
 | [`dicom-toolkit-codec`](crates/dicom-toolkit-codec) | `dcmjpeg`, `dcmjpls`, `dcmrle`, `dcmjp2k` | JPEG baseline, **pure-Rust JPEG-LS**, **pure-Rust JPEG 2000** (lossless & lossy), RLE PackBits, codec registry |
@@ -156,17 +156,37 @@ let raw   = codec.decode(&compressed_bytes, width, height, samples)?;
 ### Async networking (C-ECHO)
 
 ```rust
-use dicom_toolkit_net::{association::Association, config::AssociationConfig};
+use dicom_toolkit_core::error::DcmResult;
+use dicom_toolkit_core::uid::sop_class;
+use dicom_toolkit_net::{
+    c_echo, Association, AssociationConfig, PresentationContextRq,
+};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> DcmResult<()> {
     let cfg = AssociationConfig::default();
-    let mut assoc = Association::request("pacs.example.com:11112", cfg).await?;
-    assoc.c_echo().await?;
+    let contexts = [PresentationContextRq {
+        id: 1,
+        abstract_syntax: sop_class::VERIFICATION.to_string(),
+        transfer_syntaxes: vec!["1.2.840.10008.1.2.1".to_string()],
+    }];
+    let mut assoc = Association::request(
+        "pacs.example.com:11112",
+        "PACS",
+        "RUSTSCU",
+        &contexts,
+        &cfg,
+    )
+    .await?;
+    c_echo(&mut assoc, 1).await?;
     assoc.release().await?;
     Ok(())
 }
 ```
+
+For large file-backed C-STORE, lazy C-FIND/C-GET/C-MOVE providers, role
+selection, resource limits, and current concurrency boundaries, see
+[`docs/NETWORKING_STREAMING_FOUNDATION.md`](docs/NETWORKING_STREAMING_FOUNDATION.md).
 
 ---
 
