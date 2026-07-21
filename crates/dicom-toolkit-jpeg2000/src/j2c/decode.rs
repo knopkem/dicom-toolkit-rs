@@ -427,13 +427,17 @@ fn decode_sub_band_bitplanes(
                 let base_store = &mut storage.coefficients[sub_band.coefficients.clone()];
                 let mut base_idx = (y_offset * sub_band.rect.width()) as usize + x_offset as usize;
 
-                for coefficients in tile_ctx.bit_plane_decode_context.coefficient_rows() {
+                for (coefficients, coefficient_states) in
+                    tile_ctx.bit_plane_decode_context.coefficient_rows()
+                {
                     let out_row = &mut base_store[base_idx..];
 
-                    for (output, coefficient) in
-                        out_row.iter_mut().zip(coefficients.iter().copied())
+                    for ((output, coefficient), coefficient_state) in out_row
+                        .iter_mut()
+                        .zip(coefficients.iter().copied())
+                        .zip(coefficient_states.iter())
                     {
-                        *output = coefficient.get() as f32;
+                        *output = coefficient.reconstructed(coefficient_state) as f32;
                         *output *= dequantization_step;
                     }
 

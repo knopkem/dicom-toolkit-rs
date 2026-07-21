@@ -209,11 +209,13 @@ pub(crate) const BITPLANE_BIT_SIZE: u32 = size_of::<u32>() as u32 * 8 - 1;
 const SIGNIFICANCE_SHIFT: u8 = 7;
 const HAS_MAGNITUDE_REFINEMENT_SHIFT: u8 = 6;
 const HAS_ZERO_CODING_SHIFT: u8 = 5;
+const DECODED_BIT_POSITION_MASK: u8 = 0x1f;
 
-/// Bit-packed coefficient state (only 3 bits used):
+/// Bit-packed coefficient state:
 /// - Bit 7: significance state (set when first non-zero bit is encountered)
 /// - Bit 6: has had magnitude refinement pass
 /// - Bit 5: zero coded in current bitplane's significance propagation pass
+/// - Bits 0-4: position of the least significant decoded magnitude bit
 #[derive(Default, Copy, Clone)]
 pub(crate) struct CoefficientState(u8);
 
@@ -242,6 +244,18 @@ impl CoefficientState {
     }
 
     #[inline(always)]
+    fn set_decoded_bit_position(&mut self, position: u8) {
+        debug_assert!(position <= DECODED_BIT_POSITION_MASK);
+
+        self.0 = (self.0 & !DECODED_BIT_POSITION_MASK) | position;
+    }
+
+    #[inline(always)]
+    fn decoded_bit_position(&self) -> u8 {
+        self.0 & DECODED_BIT_POSITION_MASK
+    }
+
+    #[inline(always)]
     fn is_significant(&self) -> bool {
         self.significance() == 1
     }
@@ -266,10 +280,21 @@ impl CoefficientState {
 pub(crate) struct Coefficient(u32);
 
 impl Coefficient {
-    pub(crate) fn get(&self) -> i32 {
+    pub(crate) fn reconstructed(&self, state: &CoefficientState) -> i32 {
         let mut magnitude = (self.0 & !0x80000000) as i32;
         // Map sign (0 for positive, 1 for negative) to 1, -1.
         magnitude *= 1 - 2 * (self.sign() as i32);
+
+        // See Formula E-6: when a code-block's coding passes stop above bit 0,
+        // the bits below the last decoded bitplane are unknown. Reconstruct the
+        // coefficient at the mid-point of the remaining uncertainty interval by
+        // adding 2^(b-1) (sign-preserving) instead of using the zero-biased
+        // magnitude, per ISO 15444-1 E.1.1.2.
+        let bit_position = state.decoded_bit_position();
+        if magnitude != 0 && bit_position != 0 {
+            let offset = 1 << (bit_position - 1);
+            magnitude += if magnitude > 0 { offset } else { -offset };
+        }
 
         magnitude
     }
@@ -475,11 +500,22 @@ impl BitPlaneDecodeContext {
         Ok(())
     }
 
-    pub(crate) fn coefficient_rows(&self) -> impl Iterator<Item = &[Coefficient]> {
+    pub(crate) fn coefficient_rows(
+        &self,
+    ) -> impl Iterator<Item = (&[Coefficient], &[CoefficientState])> {
         self.coefficients
             .chunks_exact(self.padded_width as usize)
+            .zip(
+                self.coefficient_states
+                    .chunks_exact(self.padded_width as usize),
+            )
             // Exclude the padding that we added.
-            .map(|row| &row[COEFFICIENTS_PADDING as usize..][..self.width as usize])
+            .map(|(coefficients, states)| {
+                (
+                    &coefficients[COEFFICIENTS_PADDING as usize..][..self.width as usize],
+                    &states[COEFFICIENTS_PADDING as usize..][..self.width as usize],
+                )
+            })
             .skip(COEFFICIENTS_PADDING as usize)
             .take(self.height as usize)
     }
@@ -522,6 +558,7 @@ impl BitPlaneDecodeContext {
 
         if !is_significant {
             self.coefficient_states[idx].set_significant();
+            self.coefficient_states[idx].set_decoded_bit_position(self.current_bit_position);
 
             // Update all neighbors so they know this coefficient is significant
             // now.
@@ -547,7 +584,9 @@ impl BitPlaneDecodeContext {
 
     #[inline(always)]
     fn set_magnitude_refined(&mut self, position: Position) {
-        self.coefficient_states[position.index(self.padded_width)].set_magnitude_refined();
+        let state = &mut self.coefficient_states[position.index(self.padded_width)];
+        state.set_magnitude_refined();
+        state.set_decoded_bit_position(self.current_bit_position);
     }
 
     #[inline(always)]
