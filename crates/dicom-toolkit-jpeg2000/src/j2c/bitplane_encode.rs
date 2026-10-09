@@ -147,7 +147,10 @@ pub(crate) fn encode_code_block(
     }
 
     let num_bitplanes = 32 - max_magnitude.leading_zeros();
-    debug_assert!(num_bitplanes as u8 <= total_bitplanes);
+    debug_assert!(
+        num_bitplanes as u8 <= total_bitplanes,
+        "code-block magnitude {max_magnitude} needs {num_bitplanes} bitplanes, but subband provides {total_bitplanes}"
+    );
     let num_zero_bitplanes = total_bitplanes.saturating_sub(num_bitplanes as u8);
 
     // Build coefficient magnitude and sign arrays

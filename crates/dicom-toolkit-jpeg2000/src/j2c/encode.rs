@@ -270,8 +270,10 @@ fn encode_impl(
         options.guard_bits.max(2)
     };
 
+    // RCT chroma components can require one more bit than the source samples.
+    let coding_bit_depth = bit_depth.saturating_add(u8::from(use_mct && options.reversible));
     let step_sizes =
-        quantize::compute_step_sizes(bit_depth, num_levels, options.reversible, guard_bits);
+        quantize::compute_step_sizes(coding_bit_depth, num_levels, options.reversible, guard_bits);
 
     // Step 5: Quantize and encode code-blocks for each component
     let cb_width = 1u32 << (options.code_block_width_exp + 2);
@@ -279,26 +281,32 @@ fn encode_impl(
 
     let mut resolution_packets: Vec<ResolutionPacket> = Vec::new();
 
-    for decomp in decompositions.iter().take(num_components as usize) {
-        // LL subband (resolution 0)
-        let ll_subband = encode_subband(
-            &decomp.ll,
-            decomp.ll_width,
-            decomp.ll_height,
-            &step_sizes[0],
-            guard_bits,
-            options.reversible,
-            block_coding_mode,
-            cb_width,
-            cb_height,
-            SubBandType::LowLow,
-        )?;
-        resolution_packets.push(ResolutionPacket {
-            subbands: vec![ll_subband],
-        });
+    // Packets are emitted in LRCP order: resolution first, then component.
+    for resolution_idx in 0..=num_levels as usize {
+        for decomp in decompositions.iter().take(num_components as usize) {
+            if resolution_idx == 0 {
+                // LL subband (resolution 0)
+                let ll_subband = encode_subband(
+                    &decomp.ll,
+                    decomp.ll_width,
+                    decomp.ll_height,
+                    &step_sizes[0],
+                    guard_bits,
+                    options.reversible,
+                    block_coding_mode,
+                    cb_width,
+                    cb_height,
+                    SubBandType::LowLow,
+                )?;
+                resolution_packets.push(ResolutionPacket {
+                    subbands: vec![ll_subband],
+                });
+                continue;
+            }
 
-        // Higher resolution levels
-        for (level_idx, level) in decomp.levels.iter().enumerate() {
+            // Higher resolution levels, resolution_idx > 0.
+            let level_idx = resolution_idx - 1;
+            let level = &decomp.levels[level_idx];
             let step_base = 1 + level_idx * 3;
 
             // HL subband
