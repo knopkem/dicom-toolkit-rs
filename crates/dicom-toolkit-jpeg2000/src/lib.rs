@@ -794,7 +794,7 @@ fn cielab_to_rgb<S: Simd>(
 
     let rl = lab.rl.unwrap_or(100);
     let ra = lab.ra.unwrap_or(170);
-    let rb = lab.ra.unwrap_or(200);
+    let rb = lab.rb.unwrap_or(200);
     let ol = lab.ol.unwrap_or(0);
     let oa = lab.oa.unwrap_or(1 << (bit_depth - 1));
     let ob = lab
@@ -900,4 +900,45 @@ fn sycc_to_rgb<S: Simd>(simd: S, components: &mut [ComponentData], bit_depth: u8
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cielab_conversion_scales_all_channels() {
+        let mut components = [
+            ComponentData {
+                container: math::SimdBuffer::new(vec![255.0]),
+                bit_depth: 8,
+            },
+            ComponentData {
+                container: math::SimdBuffer::new(vec![128.0]),
+                bit_depth: 8,
+            },
+            ComponentData {
+                container: math::SimdBuffer::new(vec![255.0]),
+                bit_depth: 8,
+            },
+        ];
+        let lab = CieLab {
+            rl: Some(100),
+            ol: Some(0),
+            ra: Some(100),
+            oa: Some(128),
+            rb: Some(200),
+            ob: Some(96),
+        };
+
+        dispatch!(Level::new(), simd => {
+            cielab_to_rgb(simd, &mut components, 8, &lab)
+        })
+        .unwrap();
+
+        let expected = [255.0, 128.0, 128.0 - (200.0 * 96.0 / 255.0) + 200.0];
+        for (component, expected) in components.iter().zip(expected) {
+            assert!((component.container.truncated()[0] - expected).abs() < 0.01);
+        }
+    }
 }
